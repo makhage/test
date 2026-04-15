@@ -24,6 +24,7 @@ dependencies = [
     "plotly>=5.18.0",
     "rich>=13.7.0",
     "praw>=7.7.0",
+    "yt-dlp>=2024.1.0",
 ]
 
 [project.optional-dependencies]

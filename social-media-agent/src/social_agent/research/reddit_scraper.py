@@ -123,14 +123,28 @@ def scrape_all_subreddits(
     profile: InfluencerProfile,
     sort: str = "hot",
     limit_per_sub: int = 25,
+    override_subreddits: list[str] | None = None,
 ) -> list[dict]:
-    """Scrape all configured subreddits for the influencer's niche."""
+    """Scrape all configured subreddits for the influencer's niche.
+
+    Uses auto-discovered subreddits if available, falls back to profile config.
+    Can be overridden with an explicit list.
+    """
     init_db()
+
+    # Priority: explicit override > auto-discovered > profile config
+    if override_subreddits:
+        subreddits = override_subreddits
+    else:
+        # Check for auto-discovered subreddits
+        from social_agent.research.niche_profiler import get_discovered_subreddits
+        discovered = get_discovered_subreddits()
+        subreddits = discovered if discovered else profile.reddit.subreddits
 
     all_posts: list[dict] = []
     reddit_config = profile.reddit
 
-    for sub_name in reddit_config.subreddits:
+    for sub_name in subreddits:
         posts = scrape_subreddit(
             subreddit_name=sub_name,
             sort=sort,

@@ -25,11 +25,21 @@ profile = load_profile()
 settings = get_settings()
 has_reddit = bool(settings.reddit_client_id and settings.reddit_client_secret)
 
-# --- Subreddit config ---
-st.markdown("### Tracked Subreddits")
-if profile.reddit.subreddits:
-    cols = st.columns(min(len(profile.reddit.subreddits), 5))
-    for i, sub in enumerate(profile.reddit.subreddits):
+# --- Subreddit source: auto-discovered vs manual ---
+from social_agent.research.niche_profiler import get_discovered_subreddits
+discovered_subs = get_discovered_subreddits()
+active_subs = st.session_state.get("active_subreddits", discovered_subs if discovered_subs else profile.reddit.subreddits)
+source_label = "Auto-Discovered" if discovered_subs else "Manual Config"
+
+st.markdown("### Active Subreddits")
+if discovered_subs:
+    st.caption(f"🧬 **{source_label}** — These were auto-discovered by analyzing your content. Go to Niche Profile to re-analyze.")
+else:
+    st.caption(f"📝 **{source_label}** — From `profiles/default.yaml`. Run Niche Profile analysis to auto-discover subreddits.")
+
+if active_subs:
+    cols = st.columns(min(len(active_subs), 5))
+    for i, sub in enumerate(active_subs):
         with cols[i % len(cols)]:
             st.markdown(
                 f'<div class="card" style="text-align: center; padding: 0.6rem;">'
@@ -38,7 +48,7 @@ if profile.reddit.subreddits:
                 unsafe_allow_html=True,
             )
 else:
-    st.info("No subreddits configured. Add them to `profiles/default.yaml` under `reddit.subreddits`.")
+    st.info("No subreddits configured. Go to Niche Profile to auto-discover them, or add manually in `profiles/default.yaml`.")
 
 # --- Scan controls ---
 st.markdown("---")
@@ -60,11 +70,16 @@ if not has_reddit:
     st.info("Set `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` in `.env` to enable Reddit scanning.")
 
 if scan_clicked:
-    with st.spinner(f"Scanning {len(profile.reddit.subreddits)} subreddits..."):
+    with st.spinner(f"Scanning {len(active_subs)} subreddits..."):
         try:
             from social_agent.research.reddit_scraper import scrape_all_subreddits
-            posts = scrape_all_subreddits(profile, sort=sort_by, limit_per_sub=limit_per_sub)
-            st.success(f"Scraped {len(posts)} posts from {len(profile.reddit.subreddits)} subreddits!")
+            posts = scrape_all_subreddits(
+                profile,
+                sort=sort_by,
+                limit_per_sub=limit_per_sub,
+                override_subreddits=active_subs,
+            )
+            st.success(f"Scraped {len(posts)} posts from {len(active_subs)} subreddits!")
             st.rerun()
         except Exception as e:
             st.error(f"Scan failed: {e}")
