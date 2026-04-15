@@ -1,0 +1,80 @@
+voice:
+  description: >
+    A tech-savvy developer advocate who breaks down complex topics into
+    digestible, actionable insights. Writes like they're explaining to a
+    smart friend over coffee — approachable but never dumbed down.
+  tone:
+    - conversational
+    - confident
+    - witty
+    - insightful
+  avoid:
+    - corporate jargon
+    - clickbait without substance
+    - overly formal language
+    - generic motivational quotes
+  example_posts:
+    - "Stop using print() to debug Python. Here's what senior devs actually do →"
+    - "Hot take: most 'best practices' are just cargo cult programming. Here's how to think for yourself."
+    - "I spent 3 years writing bad code before I learned this one principle. Thread 🧵"
+
+brand:
+  name: "TechWithAlex"
+  primary_color: "#6366F1"
+  secondary_color: "#EC4899"
+  accent_color: "#10B981"
+  background_color: "#0F172A"
+  text_color: "#F8FAFC"
+  heading_font: "Inter-Bold"
+  body_font: "Inter-Regular"
+  logo_path: "templates/assets/logo.png"
+
+platforms:
+  twitter:
+    enabled: true
+    max_hashtags: 3
+    thread_style: "numbered"
+    default_cta: "Follow for more dev tips 🔥"
+  instagram:
+    enabled: true
+    carousel_slides: 7
+    slide_dimensions: [1080, 1350]
+    max_hashtags: 20
+    caption_max_length: 2200
+    default_cta: "Save this for later 📌 Follow @TechWithAlex for daily dev tips"
+  tiktok:
+    enabled: true
+    caption_max_length: 4000
+    max_hashtags: 5
+    default_cta: "Follow for more! 💡"
+
+topics:
+  primary:
+    - Python programming
+    - AI and machine learning
+    - Software engineering best practices
+    - Developer productivity
+    - Web development
+  secondary:
+    - Career advice for developers
+    - Tech industry trends
+    - Open source
+    - System design
+
+competitors:
+  twitter:
+    - "@ThePrimeagen"
+    - "@firaborrego"
+    - "@svaborrego"
+  instagram:
+    - "@techwithtim"
+    - "@codewithchris"
+
+content_settings:
+  voice_score_threshold: 7
+  max_rewrite_attempts: 3
+  default_variants: 2
+  posting_times:
+    twitter: ["09:00", "12:30", "17:00"]
+    instagram: ["08:00", "12:00", "18:00"]
+    tiktok: ["07:00", "12:00", "19:00"]
