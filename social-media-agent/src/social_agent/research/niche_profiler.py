@@ -92,7 +92,7 @@ def scrape_creator_twitter(handle: str) -> dict[str, Any]:
 
 
 def scrape_creator_instagram(account_id: str) -> dict[str, Any]:
-    """Scrape the creator's Instagram: bio, recent captions, hashtags."""
+    """Scrape the creator's Instagram: bio, recent captions, hashtags, and video URLs."""
     settings = get_settings()
     if not settings.instagram_access_token:
         return {}
@@ -110,19 +110,25 @@ def scrape_creator_instagram(account_id: str) -> dict[str, Any]:
 
         profile_data = resp.json()
 
-        # Get recent media captions
+        # Get recent media captions + video URLs
         media_url = f"https://graph.facebook.com/v18.0/{account_id}/media"
         media_resp = requests.get(media_url, params={
-            "fields": "caption,like_count,comments_count,media_type",
+            "fields": "caption,like_count,comments_count,media_type,media_url,permalink",
             "limit": 50,
             "access_token": settings.instagram_access_token,
         }, timeout=10)
 
         captions = []
+        video_urls = []
         if media_resp.status_code == 200:
             for item in media_resp.json().get("data", []):
                 if item.get("caption"):
                     captions.append(item["caption"])
+                # Collect video/reel URLs for transcription
+                if item.get("media_type") in ("VIDEO", "REELS"):
+                    permalink = item.get("permalink", "")
+                    if permalink:
+                        video_urls.append(permalink)
 
         return {
             "platform": "instagram",
@@ -130,6 +136,103 @@ def scrape_creator_instagram(account_id: str) -> dict[str, Any]:
             "bio": profile_data.get("biography", ""),
             "followers": profile_data.get("followers_count", 0),
             "recent_posts": captions[:50],
+            "video_urls": video_urls[:10],
+        }
+    except Exception as e:
+        return {"platform": "instagram", "error": str(e)}
+
+
+def scrape_creator_tiktok(tiktok_url: str) -> dict[str, Any]:
+    """Scrape a TikTok creator's profile: bio, video captions, and video URLs for transcription.
+
+    Uses yt-dlp which supports TikTok profile/video extraction.
+    """
+    try:
+        import yt_dlp
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": True,
+            "playlistend": 20,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(tiktok_url, download=False)
+
+        if not info:
+            return {}
+
+        # TikTok profile extraction
+        uploader = info.get("uploader", info.get("title", ""))
+        description = info.get("description", "")
+        entries = info.get("entries", [])
+
+        video_titles = []
+        video_urls = []
+        for entry in (entries or [])[:20]:
+            if not entry:
+                continue
+            title = entry.get("title", entry.get("description", ""))
+            if title:
+                video_titles.append(title[:300])
+            url = entry.get("url", entry.get("webpage_url", ""))
+            if url:
+                video_urls.append(url)
+
+        return {
+            "platform": "tiktok",
+            "handle": uploader,
+            "bio": description[:1000],
+            "recent_posts": video_titles,
+            "video_urls": video_urls[:10],
+        }
+    except Exception as e:
+        return {"platform": "tiktok", "error": str(e)}
+
+
+def scrape_creator_instagram_public(instagram_url: str) -> dict[str, Any]:
+    """Scrape an Instagram profile using yt-dlp (no Graph API needed).
+
+    Works with public profiles — extracts reel/video URLs and captions.
+    """
+    try:
+        import yt_dlp
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": True,
+            "playlistend": 20,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(instagram_url, download=False)
+
+        if not info:
+            return {}
+
+        uploader = info.get("uploader", info.get("title", ""))
+        entries = info.get("entries", [])
+
+        captions = []
+        video_urls = []
+        for entry in (entries or [])[:20]:
+            if not entry:
+                continue
+            desc = entry.get("description", entry.get("title", ""))
+            if desc:
+                captions.append(desc[:500])
+            url = entry.get("url", entry.get("webpage_url", ""))
+            if url:
+                video_urls.append(url)
+
+        return {
+            "platform": "instagram",
+            "handle": uploader,
+            "bio": info.get("description", "")[:1000],
+            "recent_posts": captions,
+            "video_urls": video_urls[:10],
         }
     except Exception as e:
         return {"platform": "instagram", "error": str(e)}
@@ -287,10 +390,15 @@ Return JSON:
 def analyze_creator_niche(
     profile: InfluencerProfile,
     youtube_channel_url: str | None = None,
+    tiktok_url: str | None = None,
+    instagram_url: str | None = None,
     transcribe_videos: bool = True,
-    max_video_transcripts: int = 3,
+    max_video_transcripts: int = 5,
 ) -> dict[str, Any]:
-    """Scrape the creator's content and use Claude to analyze their niche.
+    """Scrape the creator's content across all platforms and use Claude to analyze their niche.
+
+    Supports: Twitter, Instagram (Graph API or public URL), TikTok, YouTube.
+    Transcribes videos from ALL platforms (YouTube, TikTok, Instagram Reels).
 
     Returns a full niche analysis including recommended subreddits.
     """
@@ -300,37 +408,43 @@ def analyze_creator_niche(
 
     # --- Scrape all creator content ---
     creator_content: list[dict] = []
+    all_video_urls: list[tuple[str, str]] = []  # (platform, url)
 
     # Twitter
-    for handle in profile.competitors.twitter[:1]:  # Use first handle as the creator's own
-        # The creator's own handle should ideally be in the profile
-        pass
-
-    # Try scraping creator's Twitter if we have bearer token
     if settings.twitter_bearer_token and profile.brand.name:
         twitter_data = scrape_creator_twitter(profile.brand.name)
         if twitter_data and "error" not in twitter_data:
             creator_content.append(twitter_data)
 
-    # Instagram
+    # Instagram — try Graph API first, fall back to public scraping
     if settings.instagram_access_token and settings.instagram_business_account_id:
         ig_data = scrape_creator_instagram(settings.instagram_business_account_id)
         if ig_data and "error" not in ig_data:
             creator_content.append(ig_data)
+            for url in ig_data.get("video_urls", []):
+                all_video_urls.append(("instagram", url))
+    elif instagram_url:
+        ig_data = scrape_creator_instagram_public(instagram_url)
+        if ig_data and "error" not in ig_data:
+            creator_content.append(ig_data)
+            for url in ig_data.get("video_urls", []):
+                all_video_urls.append(("instagram", url))
+
+    # TikTok
+    if tiktok_url:
+        tiktok_data = scrape_creator_tiktok(tiktok_url)
+        if tiktok_data and "error" not in tiktok_data:
+            creator_content.append(tiktok_data)
+            for url in tiktok_data.get("video_urls", []):
+                all_video_urls.append(("tiktok", url))
 
     # YouTube
-    video_transcripts: list[dict] = []
     if youtube_channel_url:
         yt_data = scrape_creator_youtube(youtube_channel_url)
         if yt_data and "error" not in yt_data:
             creator_content.append(yt_data)
-
-            # Transcribe videos
-            if transcribe_videos and yt_data.get("video_urls"):
-                video_transcripts = transcribe_creator_videos(
-                    yt_data["video_urls"],
-                    max_videos=max_video_transcripts,
-                )
+            for url in yt_data.get("video_urls", []):
+                all_video_urls.append(("youtube", url))
 
     # Also include the existing profile data as context
     profile_context = {
@@ -341,6 +455,40 @@ def analyze_creator_niche(
     }
     creator_content.append(profile_context)
 
+    # --- Transcribe videos from ALL platforms ---
+    video_transcripts: list[dict] = []
+    if transcribe_videos and all_video_urls and settings.openai_api_key:
+        # Spread transcriptions across platforms for a balanced view
+        platform_groups: dict[str, list[str]] = {}
+        for platform, url in all_video_urls:
+            if platform not in platform_groups:
+                platform_groups[platform] = []
+            platform_groups[platform].append(url)
+
+        # Allocate transcription slots across platforms
+        remaining = max_video_transcripts
+        urls_to_transcribe: list[tuple[str, str]] = []
+        # Round-robin across platforms
+        while remaining > 0:
+            added_any = False
+            for platform, urls in platform_groups.items():
+                if urls and remaining > 0:
+                    url = urls.pop(0)
+                    urls_to_transcribe.append((platform, url))
+                    remaining -= 1
+                    added_any = True
+            if not added_any:
+                break
+
+        for platform, url in urls_to_transcribe:
+            transcript = transcribe_video(url)
+            if transcript and not transcript.startswith("("):
+                video_transcripts.append({
+                    "platform": platform,
+                    "url": url,
+                    "transcript": transcript,
+                })
+
     # --- Format for Claude ---
     content_text = ""
     for source in creator_content:
@@ -349,22 +497,26 @@ def analyze_creator_niche(
         posts = source.get("recent_posts", [])
 
         content_text += f"\n--- {platform.upper()} ---\n"
+        if source.get("handle"):
+            content_text += f"Handle: @{source['handle']}\n"
         if bio:
             content_text += f"Bio: {bio}\n"
         if source.get("pinned_tweet"):
             content_text += f"Pinned: {source['pinned_tweet']}\n"
+        if source.get("followers"):
+            content_text += f"Followers: {source['followers']:,}\n"
         if source.get("topics_claimed"):
             content_text += f"Claimed topics: {', '.join(source['topics_claimed'])}\n"
         if posts:
-            content_text += "Recent posts:\n"
+            content_text += "Recent posts/captions:\n"
             for p in posts[:30]:
                 content_text += f"  - {p[:200]}\n"
 
     transcript_text = ""
     if video_transcripts:
-        transcript_text = "\nVIDEO TRANSCRIPTS (what they actually say in their videos):\n"
+        transcript_text = "\nVIDEO TRANSCRIPTS (what they actually say in their videos — this is the best signal for their real niche):\n"
         for vt in video_transcripts:
-            transcript_text += f"\n[Video: {vt['url']}]\n{vt['transcript'][:2000]}\n"
+            transcript_text += f"\n[{vt['platform'].upper()} Video: {vt['url']}]\n{vt['transcript'][:2000]}\n"
 
     # --- Analyze with Claude ---
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)

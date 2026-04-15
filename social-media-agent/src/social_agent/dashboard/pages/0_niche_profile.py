@@ -25,7 +25,7 @@ settings = get_settings()
 
 # --- Input: Creator's accounts ---
 st.markdown("### Your Accounts")
-st.caption("Provide your social media handles so the agent can analyze your actual content.")
+st.caption("Provide your social media handles/URLs so the agent can read your actual content — posts, bios, captions, and video transcripts.")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -34,21 +34,58 @@ with col1:
         value=profile.brand.name or "",
         placeholder="@yourhandle",
     )
-    instagram_id = st.text_input(
-        "Instagram Business Account ID",
-        value=settings.instagram_business_account_id or "",
-        placeholder="Your IG business account ID",
+    tiktok_url = st.text_input(
+        "TikTok Profile URL",
+        placeholder="https://tiktok.com/@yourhandle",
+    )
+    instagram_url = st.text_input(
+        "Instagram Profile URL (public)",
+        placeholder="https://instagram.com/yourhandle",
+        help="Used when you don't have Graph API access. Agent will scrape Reels + captions.",
     )
 with col2:
     youtube_url = st.text_input(
         "YouTube Channel URL",
         placeholder="https://youtube.com/@yourchannel",
     )
-    transcribe = st.checkbox("Transcribe videos with Whisper", value=True)
+    instagram_id = st.text_input(
+        "Instagram Business Account ID (optional)",
+        value=settings.instagram_business_account_id or "",
+        placeholder="For Graph API — leave blank to use public URL instead",
+    )
 
-max_transcripts = 3
+st.markdown("#### Video Transcription")
+st.caption("The agent downloads your TikToks, Reels, and YouTube videos, then transcribes them with Whisper to understand what you actually talk about.")
+transcribe = st.checkbox("Transcribe videos with Whisper", value=True)
+
+max_transcripts = 5
 if transcribe:
-    max_transcripts = st.slider("Videos to transcribe", 1, 10, 3)
+    max_transcripts = st.slider(
+        "Videos to transcribe (spread across platforms)",
+        1, 15, 5,
+        help="Videos are sampled evenly across TikTok, Instagram, and YouTube.",
+    )
+
+# Show which platforms will be scraped
+platforms_to_scrape = []
+if twitter_handle:
+    platforms_to_scrape.append("Twitter")
+if tiktok_url:
+    platforms_to_scrape.append("TikTok")
+if instagram_url or instagram_id:
+    platforms_to_scrape.append("Instagram")
+if youtube_url:
+    platforms_to_scrape.append("YouTube")
+
+if platforms_to_scrape:
+    st.markdown(
+        f'<div class="card" style="padding: 0.6rem;">'
+        f'<p style="margin: 0; color: #94A3B8;">Will scrape: '
+        f'{" + ".join(f"<strong style=&quot;color: #10B981;&quot;>{p}</strong>" for p in platforms_to_scrape)}'
+        f'{"  |  Transcribing videos from all platforms" if transcribe else ""}'
+        f'</p></div>',
+        unsafe_allow_html=True,
+    )
 
 st.markdown("---")
 
@@ -61,13 +98,22 @@ if st.button(
     use_container_width=True,
     disabled=not can_analyze,
 ):
-    with st.spinner("Scraping your content and analyzing your niche... (this may take a minute)"):
+    steps = []
+    if platforms_to_scrape:
+        steps.append(f"scraping {', '.join(platforms_to_scrape)}")
+    if transcribe:
+        steps.append(f"transcribing up to {max_transcripts} videos")
+    steps.append("analyzing with Claude")
+
+    with st.spinner(f"Analyzing niche: {' → '.join(steps)}... (this may take a few minutes)"):
         try:
             from social_agent.research.niche_profiler import analyze_creator_niche
 
             analysis = analyze_creator_niche(
                 profile=profile,
                 youtube_channel_url=youtube_url if youtube_url else None,
+                tiktok_url=tiktok_url if tiktok_url else None,
+                instagram_url=instagram_url if instagram_url else None,
                 transcribe_videos=transcribe,
                 max_video_transcripts=max_transcripts,
             )
