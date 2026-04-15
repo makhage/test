@@ -44,8 +44,12 @@ def _build_system_prompt(
             f"\nCURRENT TIKTOK TRENDS IN YOUR NICHE:\n"
             f"- Trending topics: {', '.join(intelligence.trending_topics[:5])}\n"
             f"- Winning hooks: {', '.join(h.pattern for h in intelligence.winning_hooks[:5])}\n"
-            f"Mirror these trends in your TikTok content."
         )
+        if intelligence.audience_questions:
+            trend_context += f"- Questions your audience is asking (from Reddit): {', '.join(intelligence.audience_questions[:3])}\n"
+        if intelligence.authentic_phrases:
+            trend_context += f"- Real audience language: {', '.join(intelligence.authentic_phrases[:5])}\n"
+        trend_context += "Mirror these trends. Sound like a real person, not an AI."
 
     tiktok_settings = profile.platforms.get("tiktok")
     max_hashtags = tiktok_settings.max_hashtags if tiktok_settings else 5

@@ -45,8 +45,14 @@ def _build_system_prompt(
             f"- Trending topics: {', '.join(intelligence.trending_topics[:5])}\n"
             f"- Winning hooks: {', '.join(h.pattern for h in intelligence.winning_hooks[:5])}\n"
             f"- Top formats: {', '.join(intelligence.top_formats[:3])}\n"
-            f"Use these trends to make your content timely and relevant."
         )
+        if intelligence.audience_questions:
+            trend_context += f"- Questions your audience is asking (from Reddit): {', '.join(intelligence.audience_questions[:5])}\n"
+        if intelligence.hot_takes:
+            trend_context += f"- Hot takes getting engagement: {', '.join(intelligence.hot_takes[:3])}\n"
+        if intelligence.authentic_phrases:
+            trend_context += f"- Phrases real people use (sound human, not AI): {', '.join(intelligence.authentic_phrases[:5])}\n"
+        trend_context += "Use these trends and real audience language to make your content timely, relevant, and human."
 
     twitter_settings = profile.platforms.get("twitter")
     max_hashtags = twitter_settings.max_hashtags if twitter_settings else 3

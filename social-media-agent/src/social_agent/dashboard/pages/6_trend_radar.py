@@ -102,8 +102,50 @@ if intel:
             unsafe_allow_html=True,
         )
 
+    # Audience Questions (from Reddit)
+    if intel.audience_questions:
+        st.markdown("---")
+        st.markdown("### Audience Questions (from Reddit)")
+        st.caption("Real questions your audience is asking — each one is a content topic idea.")
+        for i, q in enumerate(intel.audience_questions, 1):
+            st.markdown(
+                f'<div class="card" style="padding: 0.6rem; border-left: 3px solid #3B82F6;">'
+                f'<span style="color: #3B82F6; font-weight: 600;">Q{i}.</span> {q}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    # Hot Takes (from Reddit)
+    if intel.hot_takes:
+        st.markdown("---")
+        st.markdown("### Hot Takes & Contrarian Opinions")
+        st.caption("Opinions getting high engagement — agree or disagree for viral content.")
+        for take in intel.hot_takes:
+            st.markdown(
+                f'<div class="card" style="padding: 0.6rem; border-left: 3px solid #F59E0B;">'
+                f'<span style="color: #F59E0B;">🔥</span> {take}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    # Authentic Phrases (from Reddit)
+    if intel.authentic_phrases:
+        st.markdown("---")
+        st.markdown("### Authentic Language")
+        st.caption("How real people talk about these topics — use this language to sound human, not AI.")
+        phrase_cols = st.columns(min(len(intel.authentic_phrases), 3) or 1)
+        for i, phrase in enumerate(intel.authentic_phrases):
+            with phrase_cols[i % len(phrase_cols)]:
+                st.markdown(
+                    f'<div class="card" style="padding: 0.5rem; text-align: center;">'
+                    f'<p style="font-style: italic; color: #10B981; margin: 0;">"{phrase}"</p>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
     # Top formats
     if intel.top_formats:
+        st.markdown("---")
         st.markdown("### Top Performing Formats")
         for fmt in intel.top_formats:
             st.markdown(f"- **{fmt}**")
@@ -112,7 +154,7 @@ if intel:
     benchmarks = intel.engagement_benchmarks
     if benchmarks:
         st.markdown("### Engagement Benchmarks")
-        bench_cols = st.columns(min(len(benchmarks), 3) or 1)
+        bench_cols = st.columns(min(len(benchmarks), 4) or 1)
         for i, (key, val) in enumerate(benchmarks.items()):
             with bench_cols[i % len(bench_cols)]:
                 st.metric(key.replace("_", " ").title(), f"{val:,.0f}")

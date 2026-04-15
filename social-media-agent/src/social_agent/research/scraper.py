@@ -123,6 +123,11 @@ def scan_niche(
     ig_posts = _scrape_instagram_hashtags(keywords)
     posts.extend(ig_posts)
 
+    # Reddit — scrape configured subreddits
+    if profile.reddit.subreddits:
+        from social_agent.research.reddit_scraper import scrape_all_subreddits
+        scrape_all_subreddits(profile)
+
     # Save to database
     session = get_session()
     try:

@@ -40,3 +40,11 @@ def test_profile_content_settings():
     profile = load_profile()
     assert profile.content_settings.voice_score_threshold == 7
     assert profile.content_settings.max_rewrite_attempts == 3
+
+
+def test_profile_has_reddit_config():
+    profile = load_profile()
+    assert len(profile.reddit.subreddits) > 0
+    assert "learnpython" in profile.reddit.subreddits
+    assert profile.reddit.min_upvotes == 100
+    assert profile.reddit.include_comments is True

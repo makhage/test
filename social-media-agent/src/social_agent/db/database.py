@@ -81,6 +81,25 @@ class ContentVariantRecord(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class RedditPostRecord(Base):
+    __tablename__ = "reddit_posts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    subreddit = Column(String(100), nullable=False)
+    title = Column(Text, nullable=False)
+    selftext = Column(Text, default="")
+    author = Column(String(100), default="")
+    upvotes = Column(Integer, default=0)
+    num_comments = Column(Integer, default=0)
+    upvote_ratio = Column(Float, default=0.0)
+    url = Column(String(500), default="")
+    permalink = Column(String(500), default="")
+    top_comments = Column(Text, default="[]")  # JSON list of top comment texts
+    flair = Column(String(100), default="")
+    content_type = Column(String(50), default="")  # "discussion", "question", "tutorial", etc.
+    scraped_at = Column(DateTime, default=datetime.utcnow)
+
+
 class CompetitorPostRecord(Base):
     __tablename__ = "competitor_posts"
 
@@ -103,6 +122,9 @@ class NicheIntelligenceRecord(Base):
     winning_hooks = Column(Text, default="[]")  # JSON
     top_formats = Column(Text, default="[]")  # JSON
     engagement_benchmarks = Column(Text, default="{}")  # JSON
+    audience_questions = Column(Text, default="[]")  # JSON — from Reddit
+    hot_takes = Column(Text, default="[]")  # JSON — from Reddit
+    authentic_phrases = Column(Text, default="[]")  # JSON — from Reddit
     source_post_count = Column(Integer, default=0)
     generated_at = Column(DateTime, default=datetime.utcnow)
 

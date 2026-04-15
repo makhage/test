@@ -14,6 +14,7 @@ from social_agent.models.content import (
     InfluencerProfile,
     InstagramSettings,
     PlatformSettings,
+    RedditConfig,
     TikTokSettings,
     TwitterSettings,
     VoiceConfig,
@@ -51,6 +52,7 @@ def load_profile(path: str | Path | None = None) -> InfluencerProfile:
             platforms[name] = cls(**raw["platforms"][name])
 
     topics = raw.get("topics", {})
+    reddit = RedditConfig(**raw.get("reddit", {}))
     competitors = CompetitorConfig(**raw.get("competitors", {}))
     content_settings = ContentSettings(**raw.get("content_settings", {}))
 
@@ -59,6 +61,7 @@ def load_profile(path: str | Path | None = None) -> InfluencerProfile:
         brand=brand,
         platforms=platforms,
         topics=topics,
+        reddit=reddit,
         competitors=competitors,
         content_settings=content_settings,
     )

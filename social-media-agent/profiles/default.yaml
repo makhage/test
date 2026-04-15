@@ -61,6 +61,19 @@ topics:
     - Open source
     - System design
 
+reddit:
+  subreddits:
+    - learnpython
+    - Python
+    - MachineLearning
+    - webdev
+    - ExperiencedDevs
+    - programming
+    - cscareerquestions
+  min_upvotes: 100
+  include_comments: true
+  max_comment_depth: 3
+
 competitors:
   twitter:
     - "@ThePrimeagen"

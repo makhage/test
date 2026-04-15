@@ -83,6 +83,13 @@ class ContentSettings(BaseModel):
     posting_times: dict[str, list[str]] = Field(default_factory=dict)
 
 
+class RedditConfig(BaseModel):
+    subreddits: list[str] = []
+    min_upvotes: int = 100
+    include_comments: bool = True
+    max_comment_depth: int = 3
+
+
 class CompetitorConfig(BaseModel):
     twitter: list[str] = []
     instagram: list[str] = []
@@ -94,6 +101,7 @@ class InfluencerProfile(BaseModel):
     brand: BrandConfig = Field(default_factory=BrandConfig)
     platforms: dict[str, PlatformSettings] = Field(default_factory=dict)
     topics: dict[str, list[str]] = Field(default_factory=dict)
+    reddit: RedditConfig = Field(default_factory=RedditConfig)
     competitors: CompetitorConfig = Field(default_factory=CompetitorConfig)
     content_settings: ContentSettings = Field(default_factory=ContentSettings)
 
@@ -184,6 +192,9 @@ class NicheIntelligence(BaseModel):
     winning_hooks: list[HookPattern] = []
     top_formats: list[str] = []
     engagement_benchmarks: dict[str, float] = Field(default_factory=dict)
+    audience_questions: list[str] = []
+    hot_takes: list[str] = []
+    authentic_phrases: list[str] = []
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     source_post_count: int = 0
 

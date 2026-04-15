@@ -56,8 +56,14 @@ def _build_system_prompt(
             f"- Trending topics: {', '.join(intelligence.trending_topics[:5])}\n"
             f"- Winning hooks: {', '.join(h.pattern for h in intelligence.winning_hooks[:5])}\n"
             f"- Top formats: {', '.join(intelligence.top_formats[:3])}\n"
-            f"Mirror these patterns in your carousel."
         )
+        if intelligence.audience_questions:
+            trend_context += f"- Questions your audience is asking (from Reddit): {', '.join(intelligence.audience_questions[:5])}\n"
+        if intelligence.hot_takes:
+            trend_context += f"- Contrarian opinions getting engagement: {', '.join(intelligence.hot_takes[:3])}\n"
+        if intelligence.authentic_phrases:
+            trend_context += f"- Real audience language to incorporate: {', '.join(intelligence.authentic_phrases[:5])}\n"
+        trend_context += "Mirror these patterns. Use the audience's real language to make slides feel authentic."
 
     ig_settings = profile.platforms.get("instagram")
     cta = ig_settings.default_cta if ig_settings else ""

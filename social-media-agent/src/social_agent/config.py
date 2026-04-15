@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     tiktok_access_token: str = ""
     tiktok_open_id: str = ""
 
+    reddit_client_id: str = ""
+    reddit_client_secret: str = ""
+    reddit_user_agent: str = "social-agent/0.1"
+
     profile_path: str = "profiles/default.yaml"
     database_url: str = f"sqlite:///{DATA_DIR / 'social_agent.db'}"
 
