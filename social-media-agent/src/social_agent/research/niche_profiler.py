@@ -3,11 +3,15 @@
 Scrapes the creator's social media accounts (posts, bio, comments, video
 transcripts) and uses Claude to build a comprehensive niche profile that
 drives subreddit discovery and content strategy.
+
+Supports a single Linktree URL as input — the agent extracts all platform
+links automatically.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -32,7 +36,175 @@ class NicheProfileRecord(Base):
     raw_content = Column(Text, default="")  # All scraped content, JSON
     niche_analysis = Column(Text, default="")  # Claude's analysis, JSON
     discovered_subreddits = Column(Text, default="[]")  # JSON list
+    linktree_url = Column(String(500), default="")  # Source Linktree URL
+    extracted_links = Column(Text, default="{}")  # JSON of extracted platform links
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Linktree Extraction — one URL to find all platform links
+# ---------------------------------------------------------------------------
+
+# Patterns to identify platform links
+_PLATFORM_PATTERNS = {
+    "twitter": [
+        r"(?:https?://)?(?:www\.)?(?:twitter\.com|x\.com)/(@?\w+)",
+    ],
+    "tiktok": [
+        r"(?:https?://)?(?:www\.)?tiktok\.com/@([\w.]+)",
+    ],
+    "instagram": [
+        r"(?:https?://)?(?:www\.)?instagram\.com/([\w.]+)",
+    ],
+    "youtube": [
+        r"(?:https?://)?(?:www\.)?youtube\.com/(@[\w]+)",
+        r"(?:https?://)?(?:www\.)?youtube\.com/(?:c|channel|user)/([\w-]+)",
+    ],
+    "linkedin": [
+        r"(?:https?://)?(?:www\.)?linkedin\.com/in/([\w-]+)",
+    ],
+    "github": [
+        r"(?:https?://)?(?:www\.)?github\.com/([\w-]+)",
+    ],
+    "twitch": [
+        r"(?:https?://)?(?:www\.)?twitch\.tv/(\w+)",
+    ],
+    "website": [],  # catch-all for personal sites
+}
+
+
+def extract_linktree(linktree_url: str) -> dict[str, Any]:
+    """Scrape a Linktree (or similar link-in-bio) page and extract all social links.
+
+    Supports: Linktree, Beacons, Linkpop, Stan Store, bio.link, lnk.bio,
+    and any link-in-bio page that renders links in HTML.
+
+    Returns:
+        {
+            "name": "creator display name",
+            "bio": "linktree bio text",
+            "avatar_url": "profile pic URL",
+            "links": [{"title": "...", "url": "..."}],
+            "platforms": {
+                "twitter": "https://twitter.com/handle",
+                "tiktok": "https://tiktok.com/@handle",
+                "instagram": "https://instagram.com/handle",
+                "youtube": "https://youtube.com/@channel",
+                ...
+            },
+            "other_links": ["https://mycourse.com", ...]
+        }
+    """
+    result: dict[str, Any] = {
+        "name": "",
+        "bio": "",
+        "avatar_url": "",
+        "links": [],
+        "platforms": {},
+        "other_links": [],
+    }
+
+    try:
+        # Fetch the page
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                          "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        }
+        resp = requests.get(linktree_url, headers=headers, timeout=15, allow_redirects=True)
+        resp.raise_for_status()
+        html = resp.text
+
+        # --- Try Linktree JSON data first (embedded in page) ---
+        # Linktree embeds account data as JSON in a script tag
+        json_match = re.search(r'__NEXT_DATA__.*?>(.*?)</script>', html, re.DOTALL)
+        if json_match:
+            try:
+                page_data = json.loads(json_match.group(1))
+                props = page_data.get("props", {}).get("pageProps", {})
+                account = props.get("account", props.get("userProfile", {}))
+
+                if account:
+                    result["name"] = account.get("pageTitle", account.get("username", ""))
+                    result["bio"] = account.get("description", "")
+                    result["avatar_url"] = account.get("profilePictureUrl", "")
+
+                links_data = props.get("links", props.get("socialLinks", []))
+                for link in links_data:
+                    if isinstance(link, dict):
+                        url = link.get("url", "")
+                        title = link.get("title", link.get("name", ""))
+                        if url:
+                            result["links"].append({"title": title, "url": url})
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+        # --- Fallback: extract all URLs from the HTML ---
+        if not result["links"]:
+            # Find all href links
+            href_pattern = r'href=["\']([^"\']+)["\']'
+            all_urls = re.findall(href_pattern, html)
+
+            # Also find URLs in data attributes (some link-in-bio tools use these)
+            data_url_pattern = r'data-(?:href|url|link)=["\']([^"\']+)["\']'
+            all_urls.extend(re.findall(data_url_pattern, html))
+
+            # Find link text near URLs using anchor tags
+            anchor_pattern = r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>'
+            anchors = re.findall(anchor_pattern, html, re.DOTALL)
+            for url, text in anchors:
+                clean_text = re.sub(r'<[^>]+>', '', text).strip()
+                if url.startswith("http") and not any(skip in url for skip in [
+                    "linktree.com", "beacons.ai", "linktr.ee",
+                    "cdn.", "static.", "fonts.", "analytics",
+                ]):
+                    result["links"].append({"title": clean_text[:100], "url": url})
+
+            # Deduplicate
+            if not result["links"]:
+                for url in all_urls:
+                    if url.startswith("http") and not any(skip in url for skip in [
+                        "linktree.com", "beacons.ai", "linktr.ee",
+                        "cdn.", "static.", "fonts.", "analytics",
+                        ".css", ".js", ".png", ".jpg", ".svg",
+                    ]):
+                        result["links"].append({"title": "", "url": url})
+
+        # Extract bio/name from meta tags if not found
+        if not result["name"]:
+            title_match = re.search(r'<title[^>]*>(.*?)</title>', html, re.DOTALL)
+            if title_match:
+                result["name"] = re.sub(r'\s*[|–-]\s*Linktree.*', '', title_match.group(1)).strip()
+
+        if not result["bio"]:
+            desc_match = re.search(r'<meta[^>]*name=["\']description["\'][^>]*content=["\']([^"\']+)', html)
+            if desc_match:
+                result["bio"] = desc_match.group(1)
+
+        # --- Classify links into platforms ---
+        for link in result["links"]:
+            url = link["url"]
+            classified = False
+
+            for platform, patterns in _PLATFORM_PATTERNS.items():
+                for pattern in patterns:
+                    match = re.search(pattern, url, re.IGNORECASE)
+                    if match:
+                        result["platforms"][platform] = url
+                        classified = True
+                        break
+                if classified:
+                    break
+
+            if not classified and url.startswith("http"):
+                result["other_links"].append(url)
+
+        # Deduplicate other_links
+        result["other_links"] = list(set(result["other_links"]))
+
+    except Exception as e:
+        result["error"] = str(e)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -389,13 +561,18 @@ Return JSON:
 
 def analyze_creator_niche(
     profile: InfluencerProfile,
+    linktree_url: str | None = None,
     youtube_channel_url: str | None = None,
     tiktok_url: str | None = None,
     instagram_url: str | None = None,
+    twitter_handle: str | None = None,
     transcribe_videos: bool = True,
     max_video_transcripts: int = 5,
 ) -> dict[str, Any]:
     """Scrape the creator's content across all platforms and use Claude to analyze their niche.
+
+    The simplest way: pass a `linktree_url` and all platform links are
+    extracted automatically. Or pass individual URLs directly.
 
     Supports: Twitter, Instagram (Graph API or public URL), TikTok, YouTube.
     Transcribes videos from ALL platforms (YouTube, TikTok, Instagram Reels).
@@ -406,13 +583,55 @@ def analyze_creator_niche(
     if not settings.anthropic_api_key:
         return {"error": "ANTHROPIC_API_KEY required for niche analysis"}
 
+    # --- Extract links from Linktree if provided ---
+    linktree_data: dict[str, Any] = {}
+    if linktree_url:
+        linktree_data = extract_linktree(linktree_url)
+        platforms = linktree_data.get("platforms", {})
+
+        # Auto-fill any URLs not explicitly provided
+        if not twitter_handle and "twitter" in platforms:
+            # Extract handle from URL
+            tw_url = platforms["twitter"]
+            tw_match = re.search(r'(?:twitter\.com|x\.com)/(@?\w+)', tw_url)
+            if tw_match:
+                twitter_handle = tw_match.group(1)
+
+        if not tiktok_url and "tiktok" in platforms:
+            tiktok_url = platforms["tiktok"]
+
+        if not instagram_url and "instagram" in platforms:
+            instagram_url = platforms["instagram"]
+
+        if not youtube_channel_url and "youtube" in platforms:
+            youtube_channel_url = platforms["youtube"]
+
     # --- Scrape all creator content ---
     creator_content: list[dict] = []
     all_video_urls: list[tuple[str, str]] = []  # (platform, url)
 
+    # Linktree bio/name as context
+    if linktree_data:
+        lt_context: dict[str, Any] = {"platform": "linktree"}
+        if linktree_data.get("name"):
+            lt_context["handle"] = linktree_data["name"]
+        if linktree_data.get("bio"):
+            lt_context["bio"] = linktree_data["bio"]
+        # Include other links (courses, websites, etc.) as context
+        other = linktree_data.get("other_links", [])
+        all_links = linktree_data.get("links", [])
+        if all_links:
+            lt_context["recent_posts"] = [
+                f'{l.get("title", "")} — {l.get("url", "")}'.strip(" —")
+                for l in all_links if l.get("url")
+            ]
+        if lt_context.get("bio") or lt_context.get("recent_posts"):
+            creator_content.append(lt_context)
+
     # Twitter
-    if settings.twitter_bearer_token and profile.brand.name:
-        twitter_data = scrape_creator_twitter(profile.brand.name)
+    resolved_handle = twitter_handle or profile.brand.name
+    if settings.twitter_bearer_token and resolved_handle:
+        twitter_data = scrape_creator_twitter(resolved_handle)
         if twitter_data and "error" not in twitter_data:
             creator_content.append(twitter_data)
 
@@ -552,6 +771,8 @@ def analyze_creator_niche(
             raw_content=json.dumps(creator_content, default=str)[:10000],
             niche_analysis=json.dumps(analysis),
             discovered_subreddits=json.dumps(subreddits),
+            linktree_url=linktree_url or "",
+            extracted_links=json.dumps(linktree_data.get("platforms", {})) if linktree_data else "{}",
         )
         session.add(record)
         session.commit()

@@ -23,36 +23,110 @@ st.markdown("The agent reads your content — posts, bios, videos — to underst
 profile = load_profile()
 settings = get_settings()
 
-# --- Input: Creator's accounts ---
-st.markdown("### Your Accounts")
-st.caption("Provide your social media handles/URLs so the agent can read your actual content — posts, bios, captions, and video transcripts.")
+# --- Primary input: Linktree URL ---
+st.markdown("### Paste Your Linktree")
+st.caption("One link is all the agent needs — it extracts your Twitter, TikTok, Instagram, YouTube, and everything else automatically.")
 
-col1, col2 = st.columns(2)
-with col1:
-    twitter_handle = st.text_input(
-        "Twitter/X Handle",
-        value=profile.brand.name or "",
-        placeholder="@yourhandle",
-    )
-    tiktok_url = st.text_input(
-        "TikTok Profile URL",
-        placeholder="https://tiktok.com/@yourhandle",
-    )
-    instagram_url = st.text_input(
-        "Instagram Profile URL (public)",
-        placeholder="https://instagram.com/yourhandle",
-        help="Used when you don't have Graph API access. Agent will scrape Reels + captions.",
-    )
-with col2:
-    youtube_url = st.text_input(
-        "YouTube Channel URL",
-        placeholder="https://youtube.com/@yourchannel",
-    )
-    instagram_id = st.text_input(
-        "Instagram Business Account ID (optional)",
-        value=settings.instagram_business_account_id or "",
-        placeholder="For Graph API — leave blank to use public URL instead",
-    )
+linktree_url = st.text_input(
+    "Linktree / Link-in-bio URL",
+    placeholder="https://linktr.ee/yourname",
+    help="Also works with Beacons, Stan Store, bio.link, lnk.bio, or any link-in-bio page.",
+)
+
+# Preview extracted links
+twitter_handle = ""
+tiktok_url = ""
+instagram_url = ""
+youtube_url = ""
+
+if linktree_url:
+    with st.spinner("Extracting links..."):
+        from social_agent.research.niche_profiler import extract_linktree
+        lt_data = extract_linktree(linktree_url)
+
+    if lt_data.get("error"):
+        st.error(f"Could not read Linktree: {lt_data['error']}")
+    else:
+        platforms_found = lt_data.get("platforms", {})
+        all_links = lt_data.get("links", [])
+
+        # Show creator info
+        if lt_data.get("name"):
+            st.markdown(
+                f'<div class="card" style="padding: 1rem;">'
+                f'<p style="font-size: 1.2rem; font-weight: 700; color: #6366F1; margin: 0;">{lt_data["name"]}</p>'
+                f'{"<p style=&quot;color: #CBD5E1; margin: 0.3rem 0 0 0;&quot;>" + lt_data.get("bio", "") + "</p>" if lt_data.get("bio") else ""}'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        # Show extracted platforms
+        if platforms_found:
+            st.markdown("**Platforms found:**")
+            plat_icons = {
+                "twitter": "𝕏", "tiktok": "♪", "instagram": "📷",
+                "youtube": "▶", "linkedin": "💼", "github": "🐙", "twitch": "🎮",
+            }
+            plat_cols = st.columns(min(len(platforms_found), 4))
+            for i, (plat, url) in enumerate(platforms_found.items()):
+                with plat_cols[i % len(plat_cols)]:
+                    icon = plat_icons.get(plat, "🔗")
+                    st.markdown(
+                        f'<div class="card" style="padding: 0.5rem; text-align: center;">'
+                        f'<p style="font-size: 1.2rem; margin: 0;">{icon}</p>'
+                        f'<p style="font-weight: 600; color: #10B981; margin: 0; font-size: 0.85rem;">{plat.title()}</p>'
+                        f'<p style="color: #475569; font-size: 0.7rem; margin: 0; word-break: break-all;">{url[:50]}</p>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            # Pre-fill from extracted
+            twitter_handle = ""
+            if "twitter" in platforms_found:
+                import re as _re
+                tw_match = _re.search(r'(?:twitter\.com|x\.com)/(@?\w+)', platforms_found["twitter"])
+                if tw_match:
+                    twitter_handle = tw_match.group(1)
+            tiktok_url = platforms_found.get("tiktok", "")
+            instagram_url = platforms_found.get("instagram", "")
+            youtube_url = platforms_found.get("youtube", "")
+
+        # Show other links
+        other = lt_data.get("other_links", [])
+        if other:
+            with st.expander(f"Other links found ({len(other)})"):
+                for link in other:
+                    st.markdown(f"- {link}")
+
+# --- Manual override / fallback ---
+with st.expander("Or enter links manually"):
+    col1, col2 = st.columns(2)
+    with col1:
+        twitter_handle = st.text_input(
+            "Twitter/X Handle",
+            value=twitter_handle,
+            placeholder="@yourhandle",
+            key="manual_twitter",
+        )
+        tiktok_url = st.text_input(
+            "TikTok Profile URL",
+            value=tiktok_url,
+            placeholder="https://tiktok.com/@yourhandle",
+            key="manual_tiktok",
+        )
+    with col2:
+        instagram_url = st.text_input(
+            "Instagram Profile URL",
+            value=instagram_url,
+            placeholder="https://instagram.com/yourhandle",
+            key="manual_instagram",
+        )
+        youtube_url = st.text_input(
+            "YouTube Channel URL",
+            value=youtube_url,
+            placeholder="https://youtube.com/@yourchannel",
+            key="manual_youtube",
+        )
 
 st.markdown("#### Video Transcription")
 st.caption("The agent downloads your TikToks, Reels, and YouTube videos, then transcribes them with Whisper to understand what you actually talk about.")
@@ -66,13 +140,13 @@ if transcribe:
         help="Videos are sampled evenly across TikTok, Instagram, and YouTube.",
     )
 
-# Show which platforms will be scraped
+# Show what will be scraped
 platforms_to_scrape = []
 if twitter_handle:
     platforms_to_scrape.append("Twitter")
 if tiktok_url:
     platforms_to_scrape.append("TikTok")
-if instagram_url or instagram_id:
+if instagram_url:
     platforms_to_scrape.append("Instagram")
 if youtube_url:
     platforms_to_scrape.append("YouTube")
@@ -99,21 +173,25 @@ if st.button(
     disabled=not can_analyze,
 ):
     steps = []
+    if linktree_url:
+        steps.append("reading Linktree")
     if platforms_to_scrape:
         steps.append(f"scraping {', '.join(platforms_to_scrape)}")
     if transcribe:
         steps.append(f"transcribing up to {max_transcripts} videos")
     steps.append("analyzing with Claude")
 
-    with st.spinner(f"Analyzing niche: {' → '.join(steps)}... (this may take a few minutes)"):
+    with st.spinner(f"{'  →  '.join(steps)}..."):
         try:
             from social_agent.research.niche_profiler import analyze_creator_niche
 
             analysis = analyze_creator_niche(
                 profile=profile,
+                linktree_url=linktree_url if linktree_url else None,
                 youtube_channel_url=youtube_url if youtube_url else None,
                 tiktok_url=tiktok_url if tiktok_url else None,
                 instagram_url=instagram_url if instagram_url else None,
+                twitter_handle=twitter_handle if twitter_handle else None,
                 transcribe_videos=transcribe,
                 max_video_transcripts=max_transcripts,
             )
