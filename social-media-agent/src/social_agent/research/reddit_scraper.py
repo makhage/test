@@ -31,18 +31,22 @@ def _classify_post(title: str, selftext: str, flair: str) -> str:
     title_lower = title.lower()
     flair_lower = flair.lower() if flair else ""
 
-    if any(w in title_lower for w in ["how do i", "how to", "help", "stuck", "can someone", "eli5", "?"]):
-        return "question"
+    # Check specific patterns first (before the generic ? fallback)
     if any(w in title_lower for w in ["tutorial", "guide", "walkthrough", "i built", "i made"]):
         return "tutorial"
     if any(w in title_lower for w in ["hot take", "unpopular opinion", "controversial", "rant", "am i wrong"]):
         return "opinion"
     if any(w in title_lower for w in ["til", "today i learned", "did you know", "interesting"]):
         return "discovery"
-    if any(w in flair_lower for w in ["discussion", "debate"]):
-        return "discussion"
     if any(w in title_lower for w in ["what", "which", "best", "favorite", "recommend"]):
         return "recommendation"
+    if any(w in title_lower for w in ["how do i", "how to", "help", "stuck", "can someone", "eli5"]):
+        return "question"
+    if any(w in flair_lower for w in ["discussion", "debate"]):
+        return "discussion"
+    # Generic ? as last resort — anything ending with a question mark not caught above
+    if "?" in title_lower:
+        return "question"
     return "discussion"
 
 
