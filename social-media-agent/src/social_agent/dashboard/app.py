@@ -1,4 +1,4 @@
-"""Main Streamlit dashboard — clean home page."""
+"""Main Streamlit dashboard — workflow-driven home page."""
 
 import sys
 from pathlib import Path
@@ -15,9 +15,11 @@ from social_agent.db.database import (
     ScheduledPostRecord,
     NicheIntelligenceRecord,
     AnalyticsRecord,
+    RedditPostRecord,
     init_db,
     get_session,
 )
+from social_agent.config import get_settings
 
 st.set_page_config(
     page_title="Social Agent",
@@ -29,6 +31,7 @@ st.set_page_config(
 init_db()
 inject_custom_css()
 
+
 # ── Sidebar ─────────────────────────────────────────────────────────────────
 
 with st.sidebar:
@@ -36,147 +39,149 @@ with st.sidebar:
         '<div class="sidebar-logo"><h1>Social Agent</h1></div>',
         unsafe_allow_html=True,
     )
+    st.caption("**Workflow**")
+    st.caption("1 Research → 2 Insights → 3 Create → 4 Publish → 5 Measure")
 
 # ── Header ──────────────────────────────────────────────────────────────────
 
-st.markdown("# Social Agent")
-st.caption("AI-powered content automation for creators")
+st.markdown("# Welcome back")
 
-# ── Setup Banner ────────────────────────────────────────────────────────────
-
-from social_agent.config import get_settings
+# ── Setup gate ──────────────────────────────────────────────────────────────
 
 _settings = get_settings()
-_has_gemini = bool(_settings.google_api_key)
-
-if not _has_gemini:
+if not _settings.google_api_key:
     st.markdown(
         '<div class="card" style="border:1px solid #F59E0B40;background:#F59E0B10;padding:1.25rem;">'
-        '<h4 style="margin:0 0 0.75rem 0;color:#F59E0B;">Setup Required</h4>'
-        '<p style="color:#CBD5E1;margin:0 0 0.75rem 0;">Add your Gemini API key to start generating content.</p>'
+        '<h4 style="margin:0 0 0.5rem 0;color:#F59E0B;">One-time setup needed</h4>'
+        '<p style="color:#CBD5E1;margin:0;">Connect your Gemini API key to unlock everything.</p>'
         '</div>',
         unsafe_allow_html=True,
     )
-
     if st.button("Connect Gemini", type="primary", use_container_width=True):
-        st.switch_page("pages/13_Settings.py")
+        st.switch_page("pages/7_Settings.py")
+    st.stop()
 
-    st.markdown("")
-
-# ── Metrics ─────────────────────────────────────────────────────────────────
+# ── Pipeline status — what's done, what's next ─────────────────────────────
 
 session = get_session()
 try:
+    has_niche = session.query(NicheIntelligenceRecord).count() > 0
+    has_reddit = session.query(RedditPostRecord).count() > 0
+    drafts = session.query(ScheduledPostRecord).filter_by(status="draft").count()
+    pending = session.query(ScheduledPostRecord).filter_by(status="pending").count()
+    published = session.query(ScheduledPostRecord).filter_by(status="published").count()
+
     week_ago = datetime.utcnow() - timedelta(days=7)
-
-    posts_this_week = session.query(ScheduledPostRecord).filter(
-        ScheduledPostRecord.created_at >= week_ago
-    ).count()
-
-    pending_count = session.query(ScheduledPostRecord).filter_by(
-        status="pending"
-    ).count()
-
     analytics = session.query(AnalyticsRecord).filter(
         AnalyticsRecord.recorded_at >= week_ago
     ).all()
-    if analytics:
-        total = sum(a.likes + a.shares + a.comments for a in analytics)
-        avg_engagement = f"{total / len(analytics):.0f}"
-    else:
-        avg_engagement = "—"
-
-    published_count = session.query(ScheduledPostRecord).filter_by(
-        status="published"
-    ).count()
+    has_analytics = len(analytics) > 0
 finally:
     session.close()
 
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.markdown(render_metric_card("Created", posts_this_week), unsafe_allow_html=True)
-with col2:
-    st.markdown(render_metric_card("Pending Review", pending_count), unsafe_allow_html=True)
-with col3:
-    st.markdown(render_metric_card("Published", published_count), unsafe_allow_html=True)
-with col4:
-    st.markdown(render_metric_card("Avg Engagement", avg_engagement), unsafe_allow_html=True)
+# Determine next step
+next_step = None
+if not has_niche:
+    next_step = {
+        "title": "Scan your niche",
+        "caption": "Paste your Linktree and let the agent discover your topics, audience, and best subreddits.",
+        "page": "pages/1_1_Niche_Scanner.py",
+        "button": "Start Niche Scanner",
+    }
+elif not has_reddit:
+    next_step = {
+        "title": "Validate with real audience data",
+        "caption": "Mine the subreddits you selected to see what questions, hot takes, and phrases your audience actually uses.",
+        "page": "pages/1_2_Reddit_Intel.py",
+        "button": "Run Reddit Intel",
+    }
+elif drafts == 0 and pending == 0:
+    next_step = {
+        "title": "Create your first post",
+        "caption": "Generate tweets, carousels, or TikTok captions in your voice using everything we've learned.",
+        "page": "pages/3_1_Create_Content.py",
+        "button": "Open Content Studio",
+    }
+elif pending > 0:
+    next_step = {
+        "title": f"Review {pending} pending post{'s' if pending != 1 else ''}",
+        "caption": "Approve or reject content before it goes live.",
+        "page": "pages/4_1_Review_Queue.py",
+        "button": "Open Review Queue",
+    }
+elif not has_analytics and published > 0:
+    next_step = {
+        "title": "Check your performance",
+        "caption": "See what's landing and let the agent learn from it.",
+        "page": "pages/5_Analytics.py",
+        "button": "View Analytics",
+    }
+else:
+    next_step = {
+        "title": "Keep creating",
+        "caption": "Generate more content, or check the Trends page for fresh ideas.",
+        "page": "pages/3_1_Create_Content.py",
+        "button": "Create More Content",
+    }
+
+st.markdown(
+    f'<div class="card" style="background:linear-gradient(135deg,#6366F120,#EC489920);'
+    f'border:1px solid #6366F140;padding:1.5rem;">'
+    f'<div style="color:#94A3B8;font-size:0.75rem;text-transform:uppercase;'
+    f'letter-spacing:0.1em;margin-bottom:0.5rem;">Next Step</div>'
+    f'<h3 style="margin:0 0 0.25rem 0;">{next_step["title"]}</h3>'
+    f'<p style="color:#CBD5E1;margin:0;">{next_step["caption"]}</p>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
+
+if st.button(next_step["button"], type="primary", use_container_width=True):
+    st.switch_page(next_step["page"])
 
 st.markdown("")
 
-# ── Quick Actions ───────────────────────────────────────────────────────────
+# ── Pipeline progress ───────────────────────────────────────────────────────
 
-col1, col2, col3 = st.columns(3)
+st.markdown("### Your Pipeline")
 
-with col1:
-    st.markdown(
-        '<div class="card">'
-        '<h4 style="margin:0 0 0.5rem 0;">Create Content</h4>'
-        '<p style="color:#94A3B8;margin:0;font-size:0.9rem;">'
-        'Generate tweets, carousels, and TikTok captions</p>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    if st.button("Open Studio", use_container_width=True, type="primary"):
-        st.switch_page("pages/1_Create_Content.py")
+steps = [
+    ("Research", has_niche, "1_1_Niche_Scanner.py"),
+    ("Audience Data", has_reddit, "1_2_Reddit_Intel.py"),
+    ("Drafts Created", (drafts + pending + published) > 0, "3_1_Create_Content.py"),
+    ("Published", published > 0, "4_1_Review_Queue.py"),
+    ("Analytics", has_analytics, "5_Analytics.py"),
+]
 
-with col2:
-    st.markdown(
-        '<div class="card">'
-        '<h4 style="margin:0 0 0.5rem 0;">Review Queue</h4>'
-        '<p style="color:#94A3B8;margin:0;font-size:0.9rem;">'
-        f'{pending_count} post{"s" if pending_count != 1 else ""} waiting for approval</p>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    if st.button("Review Posts", use_container_width=True):
-        st.switch_page("pages/2_Review_Queue.py")
-
-with col3:
-    st.markdown(
-        '<div class="card">'
-        '<h4 style="margin:0 0 0.5rem 0;">Scan Trends</h4>'
-        '<p style="color:#94A3B8;margin:0;font-size:0.9rem;">'
-        'Discover what\'s going viral in your niche</p>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-    if st.button("View Trends", use_container_width=True):
-        st.switch_page("pages/7_Trends.py")
-
-# ── Recent Activity ─────────────────────────────────────────────────────────
+cols = st.columns(len(steps))
+for i, (label, done, page) in enumerate(steps):
+    with cols[i]:
+        icon = "✓" if done else "○"
+        color = "#10B981" if done else "#64748B"
+        st.markdown(
+            f'<div style="text-align:center;padding:1rem;border:1px solid {color}40;'
+            f'border-radius:8px;background:{color}10;">'
+            f'<div style="color:{color};font-size:1.5rem;font-weight:700;">{icon}</div>'
+            f'<div style="color:#CBD5E1;font-size:0.8rem;margin-top:0.25rem;">{label}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
 st.markdown("---")
-st.markdown("### Recent Activity")
 
-session = get_session()
-try:
-    recent = (
-        session.query(ScheduledPostRecord)
-        .order_by(ScheduledPostRecord.created_at.desc())
-        .limit(5)
-        .all()
-    )
-    if recent:
-        for post in recent:
-            status_colors = {
-                "draft": "#64748B", "pending": "#F59E0B",
-                "approved": "#10B981", "published": "#6366F1",
-                "rejected": "#EF4444",
-            }
-            color = status_colors.get(post.status, "#94A3B8")
-            preview = post.content_json[:100].replace('"', '&quot;')
-            st.markdown(
-                f'<div class="card" style="padding:0.75rem 1rem;">'
-                f'<span style="color:{color};font-weight:600;text-transform:uppercase;'
-                f'font-size:0.7rem;letter-spacing:0.05em;">{post.status}</span> '
-                f'<span style="color:#64748B;font-size:0.8rem;">'
-                f'{post.platform} &middot; {post.content_type}</span>'
-                f'<p style="margin:0.25rem 0 0;color:#CBD5E1;font-size:0.85rem;">'
-                f'{preview}...</p></div>',
-                unsafe_allow_html=True,
-            )
-    else:
-        st.info("No activity yet. Open the Content Studio to create your first post.")
-finally:
-    session.close()
+# ── Current stats ───────────────────────────────────────────────────────────
+
+st.markdown("### At a Glance")
+
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.markdown(render_metric_card("Drafts", drafts), unsafe_allow_html=True)
+with col2:
+    st.markdown(render_metric_card("Pending Review", pending), unsafe_allow_html=True)
+with col3:
+    st.markdown(render_metric_card("Published", published), unsafe_allow_html=True)
+with col4:
+    avg_engagement = "—"
+    if analytics:
+        total = sum(a.likes + a.shares + a.comments for a in analytics)
+        avg_engagement = f"{total // len(analytics)}"
+    st.markdown(render_metric_card("Avg Engagement", avg_engagement), unsafe_allow_html=True)

@@ -281,3 +281,18 @@ try:
         )
 finally:
     session.close()
+
+# ── Next Step ──────────────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("### Next Step")
+st.markdown(
+    "Great — now you have real audience data. Synthesize it into content strategy in the Intelligence hub, "
+    "or jump straight to creating content that answers their actual questions."
+)
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("See Intelligence Hub →", use_container_width=True):
+        st.switch_page("pages/2_Intelligence.py")
+with col2:
+    if st.button("Create Content →", type="primary", use_container_width=True):
+        st.switch_page("pages/3_1_Create_Content.py")

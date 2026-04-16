@@ -253,3 +253,10 @@ if st.button("Add to Approval Queue", use_container_width=True):
             session.close()
     else:
         st.warning("Enter or generate content first.")
+
+# ── Next Step ──────────────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("### Next Step")
+st.markdown("Once you've generated content, review and approve it before publishing.")
+if st.button("Go to Review Queue →", type="primary", use_container_width=True):
+    st.switch_page("pages/4_1_Review_Queue.py")

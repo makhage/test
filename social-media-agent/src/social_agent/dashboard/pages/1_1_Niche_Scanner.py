@@ -276,6 +276,10 @@ if niche and "error" not in niche:
     with right:
         # Audience pain points
         st.markdown("### What Your Audience Struggles With")
+        st.caption(
+            "These are **inferred** from your content — if you talk about X, your audience probably wants to learn X. "
+            "Validate with real audience data in **Reddit Intel** (next step below)."
+        )
         st.caption("Each of these is a content idea.")
         for i, pain in enumerate(niche.get("audience_pain_points", []), 1):
             st.markdown(
@@ -318,11 +322,12 @@ if niche and "error" not in niche:
             st.markdown(f"#### {group_name}")
             for sub in group:
                 icon = type_icons.get(sub.get("type", ""), "📌")
+                name = sub["name"].lstrip("r/").lstrip("/")
                 st.markdown(
                     f'<div class="card" style="border-left: 4px solid {color};">'
                     f'<div style="display: flex; justify-content: space-between; align-items: center;">'
                     f'<span style="font-weight: 700; color: #FF4500; font-size: 1.05rem;">'
-                    f'{icon} r/{sub["name"]}</span>'
+                    f'{icon} r/{name}</span>'
                     f'<span style="color: {color}; font-size: 0.75rem; text-transform: uppercase; '
                     f'font-weight: 600;">{sub.get("type", "")}</span>'
                     f'</div>'
@@ -340,12 +345,13 @@ if niche and "error" not in niche:
         sub_cols = st.columns(3)
         for i, sub in enumerate(subreddits):
             with sub_cols[i % 3]:
+                clean_name = sub["name"].lstrip("r/").lstrip("/")
                 if st.checkbox(
-                    f"r/{sub['name']}",
+                    f"r/{clean_name}",
                     value=sub.get("relevance") in ("high", "medium"),
-                    key=f"sub_select_{sub['name']}",
+                    key=f"sub_select_{clean_name}",
                 ):
-                    selected.append(sub["name"])
+                    selected.append(clean_name)
 
         if st.button("Apply Selected Subreddits", use_container_width=True):
             st.info(
@@ -361,6 +367,16 @@ if niche and "error" not in niche:
 
     if niche.get("_created_at"):
         st.caption(f"Analysis performed: {niche['_created_at']}")
+
+    # Next step
+    st.markdown("---")
+    st.markdown("### Next Step")
+    st.markdown(
+        "Your niche analysis is a **hypothesis**. Now validate it with real audience data — "
+        "run Reddit Intel on the subreddits above to see what your audience actually says."
+    )
+    if st.button("Continue to Reddit Intel →", type="primary", use_container_width=True):
+        st.switch_page("pages/1_2_Reddit_Intel.py")
 
 else:
     st.markdown(

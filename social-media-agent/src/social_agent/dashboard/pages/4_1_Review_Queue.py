@@ -77,3 +77,10 @@ with tab3:
 
 with tab4:
     st.info("No rejected posts.")
+
+# ── Next Step ──────────────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown("### Next Step")
+st.markdown("Track how your published content is performing and let the agent learn from it.")
+if st.button("View Analytics →", type="primary", use_container_width=True):
+    st.switch_page("pages/5_Analytics.py")
