@@ -27,7 +27,7 @@ settings = get_settings()
 # Check API key
 has_api_key = bool(settings.google_api_key)
 if not has_api_key:
-    st.warning("Set `ANTHROPIC_API_KEY` in your `.env` file to enable content generation.")
+    st.warning("Add your Gemini API key in Settings to enable content generation.")
 
 # Content type selector
 content_type = st.selectbox(

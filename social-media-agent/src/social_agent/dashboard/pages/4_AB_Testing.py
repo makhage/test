@@ -75,7 +75,7 @@ if st.button(
                 st.error(f"Generation failed: {e}")
 
 if not settings.google_api_key:
-    st.info("Set `ANTHROPIC_API_KEY` in `.env` to enable variant generation.")
+    st.info("Add your Gemini API key in Settings to enable variant generation.")
 
 st.markdown("---")
 

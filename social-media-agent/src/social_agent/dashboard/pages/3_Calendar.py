@@ -205,4 +205,4 @@ if st.button(
             st.error(f"Calendar generation failed: {e}")
 
 if not settings.google_api_key:
-    st.info("Set `ANTHROPIC_API_KEY` in `.env` to enable calendar generation.")
+    st.info("Add your Gemini API key in Settings to enable calendar generation.")

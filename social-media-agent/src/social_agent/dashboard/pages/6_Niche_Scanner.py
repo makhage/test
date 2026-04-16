@@ -205,7 +205,7 @@ if st.button(
             st.error(f"Analysis failed: {e}")
 
 if not can_analyze:
-    st.info("Set `ANTHROPIC_API_KEY` in `.env` to enable niche analysis.")
+    st.info("Add your Gemini API key in Settings to enable niche analysis.")
 
 # --- Display Results ---
 st.markdown("---")

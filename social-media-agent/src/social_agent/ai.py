@@ -14,7 +14,7 @@ from typing import Any
 
 from social_agent.config import get_settings
 
-TEXT_MODEL = "gemini-2.0-flash-exp"
+TEXT_MODEL = "gemini-2.0-flash"
 IMAGE_MODEL = "imagen-3.0-generate-002"
 
 
