@@ -42,6 +42,55 @@ with st.sidebar:
 st.markdown("# Social Agent")
 st.caption("AI-powered content automation for creators")
 
+# ── Setup Banner ────────────────────────────────────────────────────────────
+
+from social_agent.config import get_settings
+from social_agent.auth import _load_tokens, _tokens_expired
+
+_settings = get_settings()
+_has_anthropic = bool(_settings.anthropic_api_key)
+_has_openai_oauth = bool(_settings.openai_oauth_client_id)
+_has_openai_key = bool(_settings.openai_api_key)
+_oauth_tokens = _load_tokens()
+_oauth_signed_in = _has_openai_oauth and _oauth_tokens and not _tokens_expired(_oauth_tokens)
+_has_openai = _oauth_signed_in or _has_openai_key
+
+if not _has_anthropic or not _has_openai:
+    st.markdown(
+        '<div class="card" style="border:1px solid #F59E0B40;background:#F59E0B10;padding:1.25rem;">'
+        '<h4 style="margin:0 0 0.75rem 0;color:#F59E0B;">Setup Required</h4>'
+        '<p style="color:#CBD5E1;margin:0 0 0.75rem 0;">Connect your API keys to start generating content.</p>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    setup_col1, setup_col2 = st.columns(2)
+
+    with setup_col1:
+        if _has_anthropic:
+            st.success("Anthropic API Key  —  Connected")
+        else:
+            st.error("Anthropic API Key  —  Not set")
+            st.caption("Add `ANTHROPIC_API_KEY` to your `.env` file")
+
+    with setup_col2:
+        if _oauth_signed_in:
+            st.success("OpenAI  —  Signed in via OAuth")
+        elif _has_openai_key:
+            st.success("OpenAI API Key  —  Connected")
+        elif _has_openai_oauth:
+            st.warning("OpenAI OAuth  —  Not signed in yet")
+            if st.button("Sign in to OpenAI", type="primary", use_container_width=True):
+                st.switch_page("pages/13_Settings.py")
+        else:
+            st.error("OpenAI  —  Not configured")
+            st.caption("Add `OPENAI_OAUTH_CLIENT_ID` or `OPENAI_API_KEY` to `.env`")
+
+    if st.button("Go to Settings", use_container_width=True):
+        st.switch_page("pages/13_Settings.py")
+
+    st.markdown("")
+
 # ── Metrics ─────────────────────────────────────────────────────────────────
 
 session = get_session()
