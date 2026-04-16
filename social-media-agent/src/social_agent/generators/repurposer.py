@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat, parse_json
 from social_agent.models.content import (
     Carousel,
     CarouselSlide,
@@ -62,9 +59,6 @@ def repurpose_content(
     intelligence: NicheIntelligence | None = None,
 ) -> dict[str, Any]:
     """Generate content for all platforms from a single topic."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
     trend_context = ""
     if intelligence and intelligence.trending_topics:
         trend_context = (
@@ -72,27 +66,16 @@ def repurpose_content(
             f"Winning hooks: {', '.join(h.pattern for h in intelligence.winning_hooks[:3])}"
         )
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4000,
-        messages=[{
-            "role": "user",
-            "content": REPURPOSE_PROMPT.format(
-                voice_description=profile.voice.description,
-                tone=", ".join(profile.voice.tone),
-                topic=f"{topic}{trend_context}",
-            ),
-        }],
+    user_prompt = REPURPOSE_PROMPT.format(
+        voice_description=profile.voice.description,
+        tone=", ".join(profile.voice.tone),
+        topic=f"{topic}{trend_context}",
     )
 
-    raw = response.content[0].text
+    raw = chat(system="You are a cross-platform content repurposing expert.", user=user_prompt, max_tokens=4000)
     try:
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        data = json.loads(raw.strip())
-    except (json.JSONDecodeError, IndexError):
+        data = parse_json(raw)
+    except Exception:
         return {"error": "Failed to parse repurposed content"}
 
     results: dict[str, Any] = {}

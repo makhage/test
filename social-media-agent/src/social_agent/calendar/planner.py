@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat, parse_json
 from social_agent.models.content import InfluencerProfile, NicheIntelligence
 from social_agent.research.analyzer import get_latest_intelligence
 
@@ -58,9 +56,6 @@ def generate_calendar(
     start_date: datetime | None = None,
 ) -> list[dict]:
     """Generate a content calendar for the specified number of days."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
     if start_date is None:
         start_date = datetime.utcnow()
 
@@ -82,31 +77,21 @@ def generate_calendar(
 
     posting_times = profile.content_settings.posting_times
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    raw = chat(
+        system="You are a content calendar strategist for social media influencers.",
+        user=CALENDAR_PROMPT.format(
+            voice_description=profile.voice.description,
+            topics=", ".join(all_topics),
+            trend_context=trend_context,
+            days=days,
+            start_date=start_date.strftime("%Y-%m-%d"),
+            topic_instruction=topic_instruction,
+            twitter_times=", ".join(posting_times.get("twitter", ["09:00", "12:30", "17:00"])),
+            instagram_times=", ".join(posting_times.get("instagram", ["08:00", "12:00", "18:00"])),
+            tiktok_times=", ".join(posting_times.get("tiktok", ["07:00", "12:00", "19:00"])),
+        ),
         max_tokens=4000,
-        messages=[{
-            "role": "user",
-            "content": CALENDAR_PROMPT.format(
-                voice_description=profile.voice.description,
-                topics=", ".join(all_topics),
-                trend_context=trend_context,
-                days=days,
-                start_date=start_date.strftime("%Y-%m-%d"),
-                topic_instruction=topic_instruction,
-                twitter_times=", ".join(posting_times.get("twitter", ["09:00", "12:30", "17:00"])),
-                instagram_times=", ".join(posting_times.get("instagram", ["08:00", "12:00", "18:00"])),
-                tiktok_times=", ".join(posting_times.get("tiktok", ["07:00", "12:00", "19:00"])),
-            ),
-        }],
     )
 
-    raw = response.content[0].text
-    try:
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        return json.loads(raw.strip())
-    except (json.JSONDecodeError, IndexError):
-        return []
+    parsed = parse_json(raw)
+    return parsed if isinstance(parsed, list) else []

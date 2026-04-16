@@ -9,9 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat_json
 from social_agent.db.database import (
     AnalyticsRecord,
     RedditPostRecord,
@@ -80,10 +78,6 @@ def build_audience_personas(
     profile: InfluencerProfile,
 ) -> dict[str, Any]:
     """Build detailed audience personas from all available data."""
-    settings = get_settings()
-    if not settings.anthropic_api_key:
-        return {"error": "ANTHROPIC_API_KEY required"}
-
     init_db()
     session = get_session()
     try:
@@ -132,30 +126,20 @@ def build_audience_personas(
 
         all_topics = profile.topics.get("primary", []) + profile.topics.get("secondary", [])
 
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4000,
-            messages=[{
-                "role": "user",
-                "content": PERSONA_PROMPT.format(
+        try:
+            result = chat_json(
+                system="You are an audience research expert.",
+                user=PERSONA_PROMPT.format(
                     niche_description=profile.voice.description,
                     topics=", ".join(all_topics),
                     reddit_data=reddit_text,
                     engagement_data=engagement_text,
                     comment_data=comment_text or "(No comment data)",
                 ),
-            }],
-        )
-
-        raw = response.content[0].text
-        try:
-            if "```json" in raw:
-                raw = raw.split("```json")[1].split("```")[0]
-            elif "```" in raw:
-                raw = raw.split("```")[1].split("```")[0]
-            return json.loads(raw.strip())
-        except (json.JSONDecodeError, IndexError):
-            return {"error": "Failed to parse personas"}
+                max_tokens=4000,
+            )
+            return result if result else {"error": "Failed to parse personas"}
+        except Exception as e:
+            return {"error": str(e)}
     finally:
         session.close()

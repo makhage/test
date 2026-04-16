@@ -45,16 +45,9 @@ settings = get_settings()
 
 st.markdown("### Connection Status")
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
-    if settings.anthropic_api_key:
-        masked = settings.anthropic_api_key[:8] + "..." + settings.anthropic_api_key[-4:]
-        st.success(f"Anthropic API Key\n\n`{masked}`")
-    else:
-        st.error("Anthropic API Key\n\nNot configured")
-
-with col2:
     tokens = _load_tokens()
     has_oauth = bool(settings.openai_oauth_client_id)
 
@@ -68,7 +61,7 @@ with col2:
     else:
         st.error("OpenAI\n\nNot configured")
 
-with col3:
+with col2:
     twitter_ok = bool(settings.twitter_api_key and settings.twitter_access_token)
     if twitter_ok:
         st.success("Twitter/X\n\nConnected")
@@ -151,11 +144,8 @@ st.markdown(
 
 with st.expander("View .env template"):
     st.code(
-        """# Required
-ANTHROPIC_API_KEY=sk-ant-...
-
-# OpenAI (choose one: OAuth or API key)
-OPENAI_OAUTH_CLIENT_ID=your-client-id    # For OAuth sign-in
+        """# OpenAI (choose one: OAuth or API key)
+OPENAI_OAUTH_CLIENT_ID=your-client-id    # For OAuth sign-in (recommended)
 OPENAI_API_KEY=sk-...                     # Or use a static key
 
 # Twitter/X

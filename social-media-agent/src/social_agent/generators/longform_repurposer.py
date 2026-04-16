@@ -8,12 +8,9 @@ One 20-minute video = 10-15 tweets, 2-3 carousels, 3-5 TikTok captions.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat, parse_json
 from social_agent.models.content import InfluencerProfile, NicheIntelligence
 from social_agent.research.niche_profiler import transcribe_video
 
@@ -93,9 +90,6 @@ def repurpose_longform(
 
     Provide either a URL (video/podcast — will be transcribed) or raw text (blog post/transcript).
     """
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
     # Get the source content
     content = source_text or ""
     if source_url and not content:
@@ -133,26 +127,15 @@ def repurpose_longform(
         voice_desc = profile.voice.description
         tone = ", ".join(profile.voice.tone)
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=8000,
-        messages=[{
-            "role": "user",
-            "content": LONGFORM_REPURPOSE_PROMPT.format(
-                voice_description=voice_desc,
-                tone=tone,
-                source_content=content[:6000],
-                trend_context=trend_context,
-            ),
-        }],
+    user_prompt = LONGFORM_REPURPOSE_PROMPT.format(
+        voice_description=voice_desc,
+        tone=tone,
+        source_content=content[:6000],
+        trend_context=trend_context,
     )
 
-    raw = response.content[0].text
+    raw = chat(system="You are a content repurposing expert for social media.", user=user_prompt, max_tokens=8000)
     try:
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        return json.loads(raw.strip())
-    except (json.JSONDecodeError, IndexError):
+        return parse_json(raw)
+    except Exception:
         return {"error": "Failed to parse repurposed content", "raw": raw[:500]}

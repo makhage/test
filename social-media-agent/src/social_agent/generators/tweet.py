@@ -1,12 +1,8 @@
-"""Tweet and thread generation using Claude."""
+"""Tweet and thread generation using AI."""
 
 from __future__ import annotations
 
-import json
-
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat, parse_json
 from social_agent.models.content import InfluencerProfile, NicheIntelligence, Tweet
 
 
@@ -75,10 +71,7 @@ def generate_tweet(
     style: str = "engaging",
     intelligence: NicheIntelligence | None = None,
 ) -> Tweet:
-    """Generate a single tweet using Claude."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
+    """Generate a single tweet using AI."""
     system = _build_system_prompt(profile, intelligence)
     user_prompt = (
         f"Write a tweet about: {topic}\n"
@@ -86,22 +79,9 @@ def generate_tweet(
         f"Return JSON with keys: text (string, max 280 chars), hashtags (list of strings)."
     )
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=500,
-        system=system,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-
-    raw = response.content[0].text
-    # Extract JSON from response
-    try:
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        data = json.loads(raw.strip())
-    except (json.JSONDecodeError, IndexError):
+    raw = chat(system=system, user=user_prompt, max_tokens=500)
+    data = parse_json(raw)
+    if not data or "text" not in data:
         data = {"text": raw.strip()[:280], "hashtags": []}
 
     return Tweet(
@@ -116,10 +96,7 @@ def generate_thread(
     num_tweets: int = 5,
     intelligence: NicheIntelligence | None = None,
 ) -> Tweet:
-    """Generate a Twitter thread using Claude."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
+    """Generate a Twitter thread using AI."""
     system = _build_system_prompt(profile, intelligence)
     user_prompt = (
         f"Write a Twitter thread ({num_tweets} tweets) about: {topic}\n\n"
@@ -129,21 +106,10 @@ def generate_thread(
         f'- hashtags: list of strings (for the last tweet)'
     )
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=2000,
-        system=system,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-
-    raw = response.content[0].text
+    raw = chat(system=system, user=user_prompt, max_tokens=2000)
     try:
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        data = json.loads(raw.strip())
-    except (json.JSONDecodeError, IndexError):
+        data = parse_json(raw)
+    except Exception:
         data = {"text": raw.strip()[:280], "thread_tweets": [], "hashtags": []}
 
     return Tweet(

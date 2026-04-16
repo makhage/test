@@ -1,13 +1,11 @@
-"""Agent loop: Claude with tool dispatch for social media content creation."""
+"""Agent loop: GPT-4o with tool dispatch for social media content creation."""
 
 from __future__ import annotations
 
 import json
 from typing import Any
 
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.auth import get_openai_client
 from social_agent.generators.carousel import generate_carousel
 from social_agent.generators.tiktok import generate_tiktok_caption
 from social_agent.generators.tweet import generate_thread, generate_tweet
@@ -43,82 +41,95 @@ Always use the influencer's authentic voice. Never produce generic AI content.
 Ask clarifying questions if the request is ambiguous.
 """
 
+# OpenAI function-calling format
 TOOLS = [
     {
-        "name": "generate_tweet",
-        "description": "Generate a tweet in the influencer's voice about a given topic.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "topic": {"type": "string", "description": "What the tweet should be about"},
-                "style": {
-                    "type": "string",
-                    "description": "Tone/style: engaging, educational, controversial, storytelling",
-                    "default": "engaging",
+        "type": "function",
+        "function": {
+            "name": "generate_tweet",
+            "description": "Generate a tweet in the influencer's voice about a given topic.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "What the tweet should be about"},
+                    "style": {
+                        "type": "string",
+                        "description": "Tone/style: engaging, educational, controversial, storytelling",
+                        "default": "engaging",
+                    },
+                    "is_thread": {
+                        "type": "boolean",
+                        "description": "Whether to generate a multi-tweet thread",
+                        "default": False,
+                    },
+                    "num_tweets": {
+                        "type": "integer",
+                        "description": "Number of tweets in the thread (if is_thread is true)",
+                        "default": 5,
+                    },
                 },
-                "is_thread": {
-                    "type": "boolean",
-                    "description": "Whether to generate a multi-tweet thread",
-                    "default": False,
-                },
-                "num_tweets": {
-                    "type": "integer",
-                    "description": "Number of tweets in the thread (if is_thread is true)",
-                    "default": 5,
-                },
+                "required": ["topic"],
             },
-            "required": ["topic"],
         },
     },
     {
-        "name": "generate_carousel",
-        "description": "Generate carousel slide content for Instagram or TikTok.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "topic": {"type": "string", "description": "Carousel topic"},
-                "num_slides": {
-                    "type": "integer",
-                    "description": "Number of slides (default 7)",
-                    "default": 7,
+        "type": "function",
+        "function": {
+            "name": "generate_carousel",
+            "description": "Generate carousel slide content for Instagram or TikTok.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "Carousel topic"},
+                    "num_slides": {
+                        "type": "integer",
+                        "description": "Number of slides (default 7)",
+                        "default": 7,
+                    },
+                    "platform": {
+                        "type": "string",
+                        "enum": ["instagram", "tiktok"],
+                        "default": "instagram",
+                    },
                 },
-                "platform": {
-                    "type": "string",
-                    "enum": ["instagram", "tiktok"],
-                    "default": "instagram",
-                },
+                "required": ["topic"],
             },
-            "required": ["topic"],
         },
     },
     {
-        "name": "render_carousel",
-        "description": "Render carousel data as branded PNG images.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "carousel_json": {
-                    "type": "string",
-                    "description": "JSON-serialized Carousel object from generate_carousel",
+        "type": "function",
+        "function": {
+            "name": "render_carousel",
+            "description": "Render carousel data as branded PNG images.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "carousel_json": {
+                        "type": "string",
+                        "description": "JSON-serialized Carousel object from generate_carousel",
+                    },
                 },
+                "required": ["carousel_json"],
             },
-            "required": ["carousel_json"],
         },
     },
     {
-        "name": "generate_tiktok",
-        "description": "Generate a TikTok caption and script notes.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "topic": {"type": "string", "description": "TikTok video topic"},
-                "style": {
-                    "type": "string",
-                    "description": "Style: educational, storytelling, trend-reaction, tutorial",
-                    "default": "educational",
+        "type": "function",
+        "function": {
+            "name": "generate_tiktok",
+            "description": "Generate a TikTok caption and script notes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "TikTok video topic"},
+                    "style": {
+                        "type": "string",
+                        "description": "Style: educational, storytelling, trend-reaction, tutorial",
+                        "default": "educational",
+                    },
                 },
+                "required": ["topic"],
             },
-            "required": ["topic"],
         },
     },
 ]
@@ -206,46 +217,43 @@ def run_agent(
     max_iterations: int = 10,
 ) -> str:
     """Run the agent loop: send user message, handle tool calls, return final response."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = get_openai_client()
     system = _build_agent_system(profile, intelligence)
 
-    messages: list[dict] = [{"role": "user", "content": user_message}]
+    messages: list[dict] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_message},
+    ]
 
     for _ in range(max_iterations):
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        response = client.chat.completions.create(
+            model="gpt-4o",
             max_tokens=4096,
-            system=system,
             tools=TOOLS,
             messages=messages,
         )
 
-        # Check if we have tool use blocks
-        tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
+        choice = response.choices[0]
 
-        if not tool_use_blocks:
-            # No tool calls — extract final text response
-            text_blocks = [b.text for b in response.content if hasattr(b, "text")]
-            return "\n".join(text_blocks)
+        # No tool calls — return the text
+        if not choice.message.tool_calls:
+            return choice.message.content or ""
 
         # Process tool calls
-        messages.append({"role": "assistant", "content": response.content})
+        messages.append(choice.message)
 
-        tool_results = []
-        for tool_block in tool_use_blocks:
+        for tool_call in choice.message.tool_calls:
+            tool_input = json.loads(tool_call.function.arguments)
             result = _handle_tool_call(
-                tool_name=tool_block.name,
-                tool_input=tool_block.input,
+                tool_name=tool_call.function.name,
+                tool_input=tool_input,
                 profile=profile,
                 intelligence=intelligence,
             )
-            tool_results.append({
-                "type": "tool_result",
-                "tool_use_id": tool_block.id,
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
                 "content": result,
             })
-
-        messages.append({"role": "user", "content": tool_results})
 
     return "Agent reached maximum iterations. Please try a more specific request."

@@ -17,10 +17,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-import anthropic
 import requests
 import tweepy
 
+from social_agent.ai import chat_json
 from social_agent.config import get_settings, DATA_DIR
 from social_agent.db.database import get_session, init_db, Base
 from social_agent.models.content import InfluencerProfile
@@ -581,8 +581,6 @@ def analyze_creator_niche(
     Returns a full niche analysis including recommended subreddits.
     """
     settings = get_settings()
-    if not settings.anthropic_api_key:
-        return {"error": "ANTHROPIC_API_KEY required for niche analysis"}
 
     # --- Extract links from Linktree if provided ---
     linktree_data: dict[str, Any] = {}
@@ -738,30 +736,17 @@ def analyze_creator_niche(
         for vt in video_transcripts:
             transcript_text += f"\n[{vt['platform'].upper()} Video: {vt['url']}]\n{vt['transcript'][:2000]}\n"
 
-    # --- Analyze with Claude ---
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    # --- Analyze with AI ---
+    analysis = chat_json(
+        system="You are an expert social media strategist.",
+        user=NICHE_ANALYSIS_PROMPT.format(
+            creator_content=content_text,
+            video_transcripts=transcript_text if transcript_text else "(No video transcripts available)",
+        ),
         max_tokens=4000,
-        messages=[{
-            "role": "user",
-            "content": NICHE_ANALYSIS_PROMPT.format(
-                creator_content=content_text,
-                video_transcripts=transcript_text if transcript_text else "(No video transcripts available)",
-            ),
-        }],
     )
-
-    raw = response.content[0].text
-    try:
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        analysis = json.loads(raw.strip())
-    except (json.JSONDecodeError, IndexError):
-        analysis = {"error": "Failed to parse niche analysis", "raw": raw[:500]}
+    if not analysis:
+        analysis = {"error": "Failed to parse niche analysis"}
 
     # --- Save to database ---
     init_db()

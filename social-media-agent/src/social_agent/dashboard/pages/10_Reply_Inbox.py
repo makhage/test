@@ -37,7 +37,7 @@ with col2:
     draft_clicked = st.button(
         "Draft Replies",
         use_container_width=True,
-        disabled=not bool(settings.anthropic_api_key),
+        disabled=not bool(settings.openai_api_key or settings.openai_oauth_client_id),
     )
 
 with col3:

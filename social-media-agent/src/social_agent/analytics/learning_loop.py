@@ -10,9 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat_json
 from social_agent.db.database import (
     AnalyticsRecord,
     ContentVariantRecord,
@@ -101,10 +99,6 @@ def gather_performance_data(days: int = 30) -> list[dict]:
 
 def analyze_performance(days: int = 30) -> dict[str, Any]:
     """Run the learning loop: analyze performance and generate recommendations."""
-    settings = get_settings()
-    if not settings.anthropic_api_key:
-        return {"error": "ANTHROPIC_API_KEY required"}
-
     data = gather_performance_data(days)
     if not data:
         return {
@@ -120,22 +114,15 @@ def analyze_performance(days: int = 30) -> dict[str, Any]:
         for d in data
     )
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=3000,
-        messages=[{"role": "user", "content": LEARNING_PROMPT.format(post_data=post_text)}],
-    )
-
-    raw = response.content[0].text
     try:
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        return json.loads(raw.strip())
-    except (json.JSONDecodeError, IndexError):
-        return {"error": "Failed to parse", "raw": raw[:500]}
+        result = chat_json(
+            system="You are a social media analytics expert.",
+            user=LEARNING_PROMPT.format(post_data=post_text),
+            max_tokens=3000,
+        )
+        return result or {"error": "Failed to parse response"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 def get_generation_hints(days: int = 30) -> dict[str, Any]:

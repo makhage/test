@@ -10,9 +10,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Any
 
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat_json
 from social_agent.db.database import RedditPostRecord, get_session, init_db
 
 
@@ -91,47 +89,36 @@ def detect_emerging_topics(
 
     Returns topics the creator should post about NOW — before they peak.
     """
-    settings = get_settings()
-
     velocities = calculate_trend_velocity()
     if not velocities:
         return {"emerging": [], "recommendations": []}
 
-    # If we have Claude, get a smarter analysis
-    if settings.anthropic_api_key:
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    topics_context = ""
+    if profile_topics:
+        topics_context = f"\nCreator's expertise: {', '.join(profile_topics)}"
 
-        topics_context = ""
-        if profile_topics:
-            topics_context = f"\nCreator's expertise: {', '.join(profile_topics)}"
+    prompt = (
+        f"These keywords are accelerating on Reddit right now (velocity = how fast they're growing):\n\n"
+        + "\n".join(f"- {v['keyword']} (velocity: {v['velocity']}, mentions: {v['recent_count']}, trend: {v['trend']})" for v in velocities[:15])
+        + f"\n{topics_context}\n\n"
+        f"Identify the 5 most promising EMERGING TOPICS (group related keywords). "
+        f"For each, explain: what's happening, why it's trending, and suggest a content angle.\n\n"
+        f"Return JSON:\n"
+        f'{{"emerging_topics": [{{"topic": "...", "keywords": [...], "velocity": N, '
+        f'"what": "what\'s happening", "why": "why now", "content_angle": "suggested post angle", '
+        f'"urgency": "high|medium|low"}}]}}'
+    )
 
-        prompt = (
-            f"These keywords are accelerating on Reddit right now (velocity = how fast they're growing):\n\n"
-            + "\n".join(f"- {v['keyword']} (velocity: {v['velocity']}, mentions: {v['recent_count']}, trend: {v['trend']})" for v in velocities[:15])
-            + f"\n{topics_context}\n\n"
-            f"Identify the 5 most promising EMERGING TOPICS (group related keywords). "
-            f"For each, explain: what's happening, why it's trending, and suggest a content angle.\n\n"
-            f"Return JSON:\n"
-            f'{{"emerging_topics": [{{"topic": "...", "keywords": [...], "velocity": N, '
-            f'"what": "what\'s happening", "why": "why now", "content_angle": "suggested post angle", '
-            f'"urgency": "high|medium|low"}}]}}'
-        )
-
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+    try:
+        result = chat_json(
+            system="You are a trend analyst.",
+            user=prompt,
             max_tokens=2000,
-            messages=[{"role": "user", "content": prompt}],
         )
-
-        raw = response.content[0].text
-        try:
-            if "```json" in raw:
-                raw = raw.split("```json")[1].split("```")[0]
-            elif "```" in raw:
-                raw = raw.split("```")[1].split("```")[0]
-            return json.loads(raw.strip())
-        except (json.JSONDecodeError, IndexError):
-            pass
+        if result:
+            return result
+    except Exception:
+        pass
 
     # Fallback: return raw velocities
     return {

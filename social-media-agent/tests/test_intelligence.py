@@ -117,12 +117,19 @@ class TestPerformanceLearningLoop:
             assert "likes" in d
             assert "total_engagement" in d
 
-    @patch("social_agent.analytics.learning_loop.get_settings")
-    def test_analyze_performance_no_api_key(self, mock_settings, db_with_history):
-        mock_settings.return_value.anthropic_api_key = ""
+    @patch("social_agent.ai.get_openai_client")
+    def test_analyze_performance_no_data(self, mock_client, monkeypatch):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        monkeypatch.setattr("social_agent.analytics.learning_loop.init_db", lambda: None)
+        monkeypatch.setattr("social_agent.analytics.learning_loop.get_session", lambda: session)
+
         from social_agent.analytics.learning_loop import analyze_performance
         result = analyze_performance(days=30)
-        assert "error" in result
+        assert "recommendations" in result
+        session.close()
 
     def test_get_generation_hints_no_data(self, monkeypatch):
         # Mock empty DB
@@ -141,22 +148,14 @@ class TestPerformanceLearningLoop:
 
 
 class TestContentGapAnalysis:
-    @patch("social_agent.research.content_gaps.get_settings")
-    def test_no_api_key_returns_error(self, mock_settings, db_with_history):
-        mock_settings.return_value.anthropic_api_key = ""
-        from social_agent.research.content_gaps import analyze_content_gaps
-        result = analyze_content_gaps()
-        assert "error" in result
-
-    def test_no_audience_data_returns_error(self, monkeypatch):
+    @patch("social_agent.ai.get_openai_client")
+    def test_no_audience_data_returns_error(self, mock_client, monkeypatch):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
         Session = sessionmaker(bind=engine)
         session = Session()
         monkeypatch.setattr("social_agent.research.content_gaps.init_db", lambda: None)
         monkeypatch.setattr("social_agent.research.content_gaps.get_session", lambda: session)
-        monkeypatch.setattr("social_agent.research.content_gaps.get_settings",
-                            lambda: MagicMock(anthropic_api_key="test"))
 
         from social_agent.research.content_gaps import analyze_content_gaps
         result = analyze_content_gaps()
@@ -165,14 +164,12 @@ class TestContentGapAnalysis:
 
 
 class TestSeriesPlanner:
-    @patch("social_agent.generators.series_planner.get_settings")
-    @patch("social_agent.generators.series_planner.anthropic.Anthropic")
-    def test_plan_series(self, mock_anthropic_cls, mock_settings, profile):
-        mock_settings.return_value.anthropic_api_key = "test"
+    @patch("social_agent.ai.get_openai_client")
+    def test_plan_series(self, mock_client_fn, profile):
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_block = MagicMock()
-        mock_block.text = json.dumps({
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = json.dumps({
             "series_title": "Python Zero to Hero",
             "series_hook": "5 parts to mastery",
             "parts": [
@@ -182,9 +179,8 @@ class TestSeriesPlanner:
             "posting_schedule": "every 2 days",
             "cross_platform_strategy": "Tease on Twitter, full on IG",
         })
-        mock_response.content = [mock_block]
-        mock_client.messages.create.return_value = mock_response
-        mock_anthropic_cls.return_value = mock_client
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_client_fn.return_value = mock_client
 
         from social_agent.generators.series_planner import plan_series
         result = plan_series("Python basics", num_parts=5, profile=profile)
@@ -210,9 +206,11 @@ class TestEvergeenRecycler:
 
 
 class TestAudiencePersonas:
-    @patch("social_agent.research.audience_personas.get_settings")
-    def test_no_api_key_returns_error(self, mock_settings, profile):
-        mock_settings.return_value.anthropic_api_key = ""
+    @patch("social_agent.ai.get_openai_client")
+    def test_no_data_handles_gracefully(self, mock_client_fn, profile, monkeypatch):
+        # Mock the AI to raise an error (simulating no auth)
+        mock_client_fn.side_effect = ValueError("No OpenAI credentials")
+
         from social_agent.research.audience_personas import build_audience_personas
         result = build_audience_personas(profile)
         assert "error" in result

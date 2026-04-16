@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
-import anthropic
 import tweepy
 
+from social_agent.ai import chat_json
 from social_agent.config import get_settings
 from social_agent.db.database import ReplyDraftRecord, get_session, init_db
 from social_agent.models.content import (
@@ -91,35 +91,22 @@ def draft_replies(
     profile: InfluencerProfile,
 ) -> list[ReplyDraft]:
     """Generate reply drafts for a list of comments."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     drafts: list[ReplyDraft] = []
 
     for comment in comments:
         try:
-            response = client.messages.create(
-                model="claude-sonnet-4-20250514",
+            data = chat_json(
+                system="You are a social media reply assistant.",
+                user=REPLY_PROMPT.format(
+                    voice_description=profile.voice.description,
+                    tone=", ".join(profile.voice.tone),
+                    author=comment.get("author", "unknown"),
+                    comment_text=comment.get("text", ""),
+                ),
                 max_tokens=500,
-                messages=[{
-                    "role": "user",
-                    "content": REPLY_PROMPT.format(
-                        voice_description=profile.voice.description,
-                        tone=", ".join(profile.voice.tone),
-                        author=comment.get("author", "unknown"),
-                        comment_text=comment.get("text", ""),
-                    ),
-                }],
             )
-
-            raw = response.content[0].text
-            try:
-                if "```json" in raw:
-                    raw = raw.split("```json")[1].split("```")[0]
-                elif "```" in raw:
-                    raw = raw.split("```")[1].split("```")[0]
-                data = json.loads(raw.strip())
-            except (json.JSONDecodeError, IndexError):
-                data = {"reply": raw.strip(), "category": "general", "priority": 5}
+            if not data:
+                data = {"reply": "", "category": "general", "priority": 5}
 
             platform = Platform(comment.get("platform", "twitter"))
             category_str = data.get("category", "general")

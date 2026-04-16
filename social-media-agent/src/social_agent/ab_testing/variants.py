@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import json
 
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat, parse_json
 from social_agent.db.database import ContentVariantRecord, get_session, init_db
 from social_agent.models.content import ContentVariant, InfluencerProfile, Platform
 
@@ -48,34 +46,21 @@ def generate_variants(
     content_type: str = "tweet",
 ) -> list[ContentVariant]:
     """Generate A/B variants of content with different hooks/angles."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    raw = chat(
+        system="You are a social media content strategist specializing in A/B testing.",
+        user=VARIANT_PROMPT.format(
+            num_variants=num_variants,
+            voice_description=profile.voice.description,
+            tone=", ".join(profile.voice.tone),
+            platform=platform.value,
+            topic=topic,
+            original=original_content,
+        ),
         max_tokens=3000,
-        messages=[{
-            "role": "user",
-            "content": VARIANT_PROMPT.format(
-                num_variants=num_variants,
-                voice_description=profile.voice.description,
-                tone=", ".join(profile.voice.tone),
-                platform=platform.value,
-                topic=topic,
-                original=original_content,
-            ),
-        }],
     )
 
-    raw = response.content[0].text
-    try:
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        data = json.loads(raw.strip())
-    except (json.JSONDecodeError, IndexError):
-        data = []
+    parsed = parse_json(raw)
+    data = parsed if isinstance(parsed, list) else parsed.get("variants", []) if parsed else []
 
     variants: list[ContentVariant] = []
     for item in data:

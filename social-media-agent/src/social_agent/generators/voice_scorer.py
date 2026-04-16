@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import json
-
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat, chat_json, parse_json
 from social_agent.models.content import InfluencerProfile, VoiceScore
 
 
@@ -63,35 +59,21 @@ def score_voice(
     profile: InfluencerProfile,
 ) -> VoiceScore:
     """Score content against the influencer's voice profile."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
     threshold = profile.content_settings.voice_score_threshold
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=500,
-        messages=[{
-            "role": "user",
-            "content": SCORING_PROMPT.format(
-                voice_description=profile.voice.description,
-                tone=", ".join(profile.voice.tone),
-                avoid=", ".join(profile.voice.avoid),
-                examples="\n".join(f'- "{p}"' for p in profile.voice.example_posts),
-                content=content,
-                threshold=threshold,
-            ),
-        }],
+    user_prompt = SCORING_PROMPT.format(
+        voice_description=profile.voice.description,
+        tone=", ".join(profile.voice.tone),
+        avoid=", ".join(profile.voice.avoid),
+        examples="\n".join(f'- "{p}"' for p in profile.voice.example_posts),
+        content=content,
+        threshold=threshold,
     )
 
-    raw = response.content[0].text
+    raw = chat(system="You are a voice consistency scoring expert for social media content.", user=user_prompt, max_tokens=500)
     try:
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        data = json.loads(raw.strip())
-    except (json.JSONDecodeError, IndexError):
+        data = parse_json(raw)
+    except Exception:
         data = {"score": 5, "feedback": "Could not parse scoring response", "passed": False}
 
     return VoiceScore(
@@ -107,26 +89,16 @@ def rewrite_for_voice(
     profile: InfluencerProfile,
 ) -> str:
     """Rewrite content to better match the influencer's voice."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1500,
-        messages=[{
-            "role": "user",
-            "content": REWRITE_PROMPT.format(
-                voice_description=profile.voice.description,
-                tone=", ".join(profile.voice.tone),
-                avoid=", ".join(profile.voice.avoid),
-                examples="\n".join(f'- "{p}"' for p in profile.voice.example_posts),
-                content=content,
-                feedback=feedback,
-            ),
-        }],
+    user_prompt = REWRITE_PROMPT.format(
+        voice_description=profile.voice.description,
+        tone=", ".join(profile.voice.tone),
+        avoid=", ".join(profile.voice.avoid),
+        examples="\n".join(f'- "{p}"' for p in profile.voice.example_posts),
+        content=content,
+        feedback=feedback,
     )
 
-    return response.content[0].text.strip()
+    return chat(system="You are a voice consistency scoring expert for social media content.", user=user_prompt, max_tokens=1500)
 
 
 def score_and_rewrite(

@@ -1,12 +1,8 @@
-"""TikTok caption and script generation using Claude."""
+"""TikTok caption and script generation using AI."""
 
 from __future__ import annotations
 
-import json
-
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat, parse_json
 from social_agent.models.content import InfluencerProfile, NicheIntelligence, TikTokCaption
 
 
@@ -72,10 +68,7 @@ def generate_tiktok_caption(
     style: str = "educational",
     intelligence: NicheIntelligence | None = None,
 ) -> TikTokCaption:
-    """Generate a TikTok caption and optional script notes using Claude."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
+    """Generate a TikTok caption and optional script notes using AI."""
     system = _build_system_prompt(profile, intelligence)
     user_prompt = (
         f"Create a TikTok caption about: {topic}\n"
@@ -87,21 +80,10 @@ def generate_tiktok_caption(
         f"- script_notes: string or null (talking points if this is a talking-head video)"
     )
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1500,
-        system=system,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-
-    raw = response.content[0].text
+    raw = chat(system=system, user=user_prompt, max_tokens=1500)
     try:
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        data = json.loads(raw.strip())
-    except (json.JSONDecodeError, IndexError):
+        data = parse_json(raw)
+    except Exception:
         data = {"caption": raw.strip(), "hashtags": []}
 
     return TikTokCaption(

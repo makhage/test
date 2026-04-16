@@ -46,7 +46,7 @@ if scan_clicked:
             st.error(f"Scan failed: {e}")
 
 # Analyze button (works from cached viral posts, no API needed)
-if st.button("Re-analyze cached posts", disabled=not bool(settings.anthropic_api_key)):
+if st.button("Re-analyze cached posts", disabled=not bool(settings.openai_api_key or settings.openai_oauth_client_id)):
     with st.spinner("Analyzing viral patterns with Claude..."):
         try:
             from social_agent.research.analyzer import analyze_viral_content

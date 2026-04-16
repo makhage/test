@@ -393,12 +393,6 @@ def auth_status() -> None:
     else:
         table.add_row("OpenAI API Key", "[dim]Not set[/dim]")
 
-    # Anthropic
-    if settings.anthropic_api_key:
-        table.add_row("Anthropic API Key", "[green]Set[/green]")
-    else:
-        table.add_row("Anthropic API Key", "[dim]Not set[/dim]")
-
     console.print(table)
 
 

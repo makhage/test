@@ -10,9 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat_json
 from social_agent.db.database import (
     RedditPostRecord,
     ScheduledPostRecord,
@@ -53,10 +51,6 @@ Return JSON:
 
 def analyze_content_gaps(limit: int = 50) -> dict[str, Any]:
     """Compare creator's content against audience demand signals."""
-    settings = get_settings()
-    if not settings.anthropic_api_key:
-        return {"error": "ANTHROPIC_API_KEY required"}
-
     init_db()
     session = get_session()
     try:
@@ -120,27 +114,14 @@ def analyze_content_gaps(limit: int = 50) -> dict[str, Any]:
         if not audience_text:
             return {"error": "No audience demand data. Run Reddit scan and comment mining first."}
 
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        result = chat_json(
+            system="You are a content strategist.",
+            user=GAP_ANALYSIS_PROMPT.format(
+                creator_content=creator_text,
+                audience_demand=audience_text,
+            ),
             max_tokens=3000,
-            messages=[{
-                "role": "user",
-                "content": GAP_ANALYSIS_PROMPT.format(
-                    creator_content=creator_text,
-                    audience_demand=audience_text,
-                ),
-            }],
         )
-
-        raw = response.content[0].text
-        try:
-            if "```json" in raw:
-                raw = raw.split("```json")[1].split("```")[0]
-            elif "```" in raw:
-                raw = raw.split("```")[1].split("```")[0]
-            return json.loads(raw.strip())
-        except (json.JSONDecodeError, IndexError):
-            return {"error": "Failed to parse gap analysis"}
+        return result if result else {"error": "Failed to parse gap analysis"}
     finally:
         session.close()

@@ -6,13 +6,10 @@ fresh hooks/angles, and suggests reposting. Most followers won't remember.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta
 from typing import Any
 
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat, parse_json
 from social_agent.db.database import AnalyticsRecord, ScheduledPostRecord, get_session, init_db
 from social_agent.models.content import InfluencerProfile
 
@@ -108,31 +105,17 @@ def recycle_content(
     profile: InfluencerProfile,
 ) -> dict[str, Any]:
     """Generate refreshed versions of an evergreen post."""
-    settings = get_settings()
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
     age_str = f"{age_days // 30} months" if age_days > 60 else f"{age_days} days"
 
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=3000,
-        messages=[{
-            "role": "user",
-            "content": RECYCLE_PROMPT.format(
-                original_content=original_content,
-                engagement=f"{engagement} total interactions",
-                age=age_str,
-                voice_description=profile.voice.description,
-            ),
-        }],
+    user_prompt = RECYCLE_PROMPT.format(
+        original_content=original_content,
+        engagement=f"{engagement} total interactions",
+        age=age_str,
+        voice_description=profile.voice.description,
     )
 
-    raw = response.content[0].text
+    raw = chat(system="You are a social media content recycling expert.", user=user_prompt, max_tokens=3000)
     try:
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        return json.loads(raw.strip())
-    except (json.JSONDecodeError, IndexError):
+        return parse_json(raw)
+    except Exception:
         return {"error": "Failed to parse recycled content"}

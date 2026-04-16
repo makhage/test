@@ -1,4 +1,4 @@
-"""Tests for content generators with mocked Claude API responses."""
+"""Tests for content generators with mocked AI responses."""
 
 import json
 from unittest.mock import MagicMock, patch
@@ -42,26 +42,14 @@ def intelligence():
     )
 
 
-def _mock_claude_response(text: str):
-    """Create a mock Anthropic client that returns the given text."""
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_block = MagicMock()
-    mock_block.text = text
-    mock_block.type = "text"
-    mock_response.content = [mock_block]
-    mock_client.messages.create.return_value = mock_response
-    return mock_client
-
-
 class TestTweetGenerator:
-    @patch("social_agent.generators.tweet.get_settings")
-    @patch("social_agent.generators.tweet.anthropic.Anthropic")
-    def test_generate_tweet(self, mock_anthropic_cls, mock_settings, profile):
-        mock_settings.return_value.anthropic_api_key = "test-key"
-        mock_anthropic_cls.return_value = _mock_claude_response(
+    @patch("social_agent.ai.get_openai_client")
+    def test_generate_tweet(self, mock_client_fn, profile):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_openai_response(
             '```json\n{"text": "Python tip: use enumerate() instead of range(len())", "hashtags": ["python"]}\n```'
         )
+        mock_client_fn.return_value = mock_client
 
         from social_agent.generators.tweet import generate_tweet
         result = generate_tweet("Python tips", profile)
@@ -70,13 +58,13 @@ class TestTweetGenerator:
         assert "python" in result.hashtags
         assert len(result.text) <= 280
 
-    @patch("social_agent.generators.tweet.get_settings")
-    @patch("social_agent.generators.tweet.anthropic.Anthropic")
-    def test_generate_tweet_with_intelligence(self, mock_anthropic_cls, mock_settings, profile, intelligence):
-        mock_settings.return_value.anthropic_api_key = "test-key"
-        mock_anthropic_cls.return_value = _mock_claude_response(
+    @patch("social_agent.ai.get_openai_client")
+    def test_generate_tweet_with_intelligence(self, mock_client_fn, profile, intelligence):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_openai_response(
             '{"text": "Hot take: Python is NOT overrated.", "hashtags": ["python", "hottake"]}'
         )
+        mock_client_fn.return_value = mock_client
 
         from social_agent.generators.tweet import generate_tweet
         result = generate_tweet("Python opinions", profile, intelligence=intelligence)
@@ -84,28 +72,28 @@ class TestTweetGenerator:
         assert result.text
         assert len(result.text) <= 280
 
-    @patch("social_agent.generators.tweet.get_settings")
-    @patch("social_agent.generators.tweet.anthropic.Anthropic")
-    def test_generate_tweet_truncates_over_280(self, mock_anthropic_cls, mock_settings, profile):
-        mock_settings.return_value.anthropic_api_key = "test-key"
+    @patch("social_agent.ai.get_openai_client")
+    def test_generate_tweet_truncates_over_280(self, mock_client_fn, profile):
+        mock_client = MagicMock()
         long_text = "x" * 300
-        mock_anthropic_cls.return_value = _mock_claude_response(
+        mock_client.chat.completions.create.return_value = _mock_openai_response(
             json.dumps({"text": long_text, "hashtags": []})
         )
+        mock_client_fn.return_value = mock_client
 
         from social_agent.generators.tweet import generate_tweet
         result = generate_tweet("test", profile)
         assert len(result.text) <= 280
 
-    @patch("social_agent.generators.tweet.get_settings")
-    @patch("social_agent.generators.tweet.anthropic.Anthropic")
-    def test_generate_thread(self, mock_anthropic_cls, mock_settings, profile):
-        mock_settings.return_value.anthropic_api_key = "test-key"
-        mock_anthropic_cls.return_value = _mock_claude_response(json.dumps({
-            "text": "Thread: 5 Python mistakes 🧵",
+    @patch("social_agent.ai.get_openai_client")
+    def test_generate_thread(self, mock_client_fn, profile):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_openai_response(json.dumps({
+            "text": "Thread: 5 Python mistakes",
             "thread_tweets": ["1. Using mutable default args", "2. Not using generators", "3. Ignoring type hints"],
             "hashtags": ["python"],
         }))
+        mock_client_fn.return_value = mock_client
 
         from social_agent.generators.tweet import generate_thread
         result = generate_thread("Python mistakes", profile, num_tweets=5)
@@ -114,24 +102,24 @@ class TestTweetGenerator:
         assert len(result.thread_tweets) == 3
         assert result.text.startswith("Thread:")
 
-    @patch("social_agent.generators.tweet.get_settings")
-    @patch("social_agent.generators.tweet.anthropic.Anthropic")
-    def test_handles_malformed_json(self, mock_anthropic_cls, mock_settings, profile):
-        mock_settings.return_value.anthropic_api_key = "test-key"
-        mock_anthropic_cls.return_value = _mock_claude_response("This is just plain text, not JSON")
+    @patch("social_agent.ai.get_openai_client")
+    def test_handles_malformed_json(self, mock_client_fn, profile):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_openai_response(
+            "This is just plain text, not JSON"
+        )
+        mock_client_fn.return_value = mock_client
 
         from social_agent.generators.tweet import generate_tweet
         result = generate_tweet("test", profile)
-        # Should fallback gracefully
         assert result.text != ""
 
 
 class TestCarouselGenerator:
-    @patch("social_agent.generators.carousel.get_settings")
-    @patch("social_agent.generators.carousel.anthropic.Anthropic")
-    def test_generate_carousel(self, mock_anthropic_cls, mock_settings, profile):
-        mock_settings.return_value.anthropic_api_key = "test-key"
-        mock_anthropic_cls.return_value = _mock_claude_response(json.dumps({
+    @patch("social_agent.ai.get_openai_client")
+    def test_generate_carousel(self, mock_client_fn, profile):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_openai_response(json.dumps({
             "title": "5 Python Tips",
             "caption": "Save this for later!",
             "hashtags": ["python"],
@@ -140,6 +128,7 @@ class TestCarouselGenerator:
                 {"heading": "Tip 2", "body": "Use pathlib", "image_prompt": "files"},
             ],
         }))
+        mock_client_fn.return_value = mock_client
 
         from social_agent.generators.carousel import generate_carousel
         result = generate_carousel("Python tips", profile, num_slides=5, platform=Platform.INSTAGRAM)
@@ -151,16 +140,16 @@ class TestCarouselGenerator:
 
 
 class TestTikTokGenerator:
-    @patch("social_agent.generators.tiktok.get_settings")
-    @patch("social_agent.generators.tiktok.anthropic.Anthropic")
-    def test_generate_tiktok_caption(self, mock_anthropic_cls, mock_settings, profile):
-        mock_settings.return_value.anthropic_api_key = "test-key"
-        mock_anthropic_cls.return_value = _mock_claude_response(json.dumps({
-            "caption": "POV: you just discovered Python decorators 🤯",
+    @patch("social_agent.ai.get_openai_client")
+    def test_generate_tiktok_caption(self, mock_client_fn, profile):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_openai_response(json.dumps({
+            "caption": "POV: you just discovered Python decorators",
             "hashtags": ["python", "coding"],
             "sound_suggestion": "original audio",
             "script_notes": "Start with confused face, then explain decorators simply.",
         }))
+        mock_client_fn.return_value = mock_client
 
         from social_agent.generators.tiktok import generate_tiktok_caption
         result = generate_tiktok_caption("Python decorators", profile)
@@ -171,18 +160,18 @@ class TestTikTokGenerator:
 
 
 class TestLongformRepurposer:
-    @patch("social_agent.generators.longform_repurposer.get_settings")
-    @patch("social_agent.generators.longform_repurposer.anthropic.Anthropic")
-    def test_repurpose_from_text(self, mock_anthropic_cls, mock_settings, profile):
-        mock_settings.return_value.anthropic_api_key = "test-key"
-        mock_anthropic_cls.return_value = _mock_claude_response(json.dumps({
+    @patch("social_agent.ai.get_openai_client")
+    def test_repurpose_from_text(self, mock_client_fn, profile):
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = _mock_openai_response(json.dumps({
             "source_summary": "A deep dive into Python decorators",
             "key_insights": ["Decorators are just functions wrapping functions"],
-            "tweets": [{"text": "Decorators decoded 🧵", "hashtags": [], "angle": "hook"}],
+            "tweets": [{"text": "Decorators decoded", "hashtags": [], "angle": "hook"}],
             "threads": [],
             "carousels": [{"title": "Decorators 101", "slides": [{"heading": "What", "body": "They wrap functions"}], "caption": "", "hashtags": []}],
             "tiktoks": [{"caption": "POV: decorators", "hashtags": [], "script_notes": "Explain it", "angle": "tutorial"}],
         }))
+        mock_client_fn.return_value = mock_client
 
         from social_agent.generators.longform_repurposer import repurpose_longform
         result = repurpose_longform(
@@ -195,3 +184,14 @@ class TestLongformRepurposer:
         assert len(result["carousels"]) >= 1
         assert len(result["tiktoks"]) >= 1
         assert result["source_summary"]
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────
+
+
+def _mock_openai_response(text: str):
+    """Create a mock OpenAI chat completion response."""
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock()]
+    mock_response.choices[0].message.content = text
+    return mock_response

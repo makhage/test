@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
-import anthropic
 import tweepy
 
+from social_agent.ai import chat, parse_json
 from social_agent.config import get_settings
 from social_agent.db.database import CompetitorPostRecord, get_session, init_db
 from social_agent.models.content import CompetitorProfile, InfluencerProfile, Platform
@@ -128,31 +128,30 @@ def analyze_competitors(profile: InfluencerProfile) -> list[CompetitorProfile]:
 
 
 def _extract_topics(records: list) -> list[str]:
-    """Use Claude to identify topics from competitor posts."""
-    settings = get_settings()
-    if not settings.anthropic_api_key or not records:
+    """Use AI to identify topics from competitor posts."""
+    if not records:
         return []
 
     texts = "\n".join(r.text[:200] for r in records[:20])
 
     try:
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        raw = chat(
+            system="You are a content analyst.",
+            user=(
+                f"From these social media posts, extract the top 5 content topics/themes. "
+                f"Return as a JSON array of strings.\n\nPosts:\n{texts}"
+            ),
             max_tokens=500,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"From these social media posts, extract the top 5 content topics/themes. "
-                    f"Return as a JSON array of strings.\n\nPosts:\n{texts}"
-                ),
-            }],
         )
-        raw = response.content[0].text
-        if "```json" in raw:
-            raw = raw.split("```json")[1].split("```")[0]
-        elif "```" in raw:
-            raw = raw.split("```")[1].split("```")[0]
-        return json.loads(raw.strip())
+        data = parse_json(raw)
+        # parse_json returns a dict, but we expect a list here
+        if isinstance(data, list):
+            return data
+        # If the model wrapped the array in an object, try to extract it
+        if isinstance(data, dict):
+            for v in data.values():
+                if isinstance(v, list):
+                    return v
+        return json.loads(raw.strip()) if raw.strip().startswith("[") else []
     except Exception:
         return []

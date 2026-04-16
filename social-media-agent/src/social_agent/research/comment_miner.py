@@ -10,10 +10,10 @@ import json
 from datetime import datetime
 from typing import Any
 
-import anthropic
 import requests
 import tweepy
 
+from social_agent.ai import chat_json
 from social_agent.config import get_settings
 from social_agent.db.database import get_session, init_db, Base
 from social_agent.models.content import InfluencerProfile
@@ -156,11 +156,7 @@ Return JSON:
 
 
 def analyze_comments(limit: int = 100) -> dict[str, Any]:
-    """Use Claude to classify mined comments and extract content ideas."""
-    settings = get_settings()
-    if not settings.anthropic_api_key:
-        return {"error": "ANTHROPIC_API_KEY required"}
-
+    """Use AI to classify mined comments and extract content ideas."""
     init_db()
     session = get_session()
     try:
@@ -179,21 +175,12 @@ def analyze_comments(limit: int = 100) -> dict[str, Any]:
             for i, r in enumerate(records)
         )
 
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        data = chat_json(
+            system="You are an audience research analyst.",
+            user=CLASSIFY_PROMPT.format(comments=comments_text),
             max_tokens=3000,
-            messages=[{"role": "user", "content": CLASSIFY_PROMPT.format(comments=comments_text)}],
         )
-
-        raw = response.content[0].text
-        try:
-            if "```json" in raw:
-                raw = raw.split("```json")[1].split("```")[0]
-            elif "```" in raw:
-                raw = raw.split("```")[1].split("```")[0]
-            data = json.loads(raw.strip())
-        except (json.JSONDecodeError, IndexError):
+        if not data:
             return {"error": "Failed to parse"}
 
         # Update DB records with classifications

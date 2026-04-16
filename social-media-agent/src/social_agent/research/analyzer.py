@@ -1,13 +1,11 @@
-"""Claude-powered viral pattern extraction and analysis."""
+"""AI-powered viral pattern extraction and analysis."""
 
 from __future__ import annotations
 
 import json
 from datetime import datetime
 
-import anthropic
-
-from social_agent.config import get_settings
+from social_agent.ai import chat_json, parse_json
 from social_agent.db.database import (
     NicheIntelligenceRecord,
     RedditPostRecord,
@@ -94,26 +92,12 @@ def analyze_viral_content(limit: int = 50) -> NicheIntelligence | None:
             )
         reddit_text = "\n\n".join(reddit_parts) if reddit_parts else "(No Reddit posts scraped yet)"
 
-        settings = get_settings()
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        data = chat_json(
+            system="You are a viral content analyst.",
+            user=ANALYSIS_PROMPT.format(posts=posts_text, reddit_posts=reddit_text),
             max_tokens=3000,
-            messages=[{
-                "role": "user",
-                "content": ANALYSIS_PROMPT.format(posts=posts_text, reddit_posts=reddit_text),
-            }],
         )
-
-        raw = response.content[0].text
-        try:
-            if "```json" in raw:
-                raw = raw.split("```json")[1].split("```")[0]
-            elif "```" in raw:
-                raw = raw.split("```")[1].split("```")[0]
-            data = json.loads(raw.strip())
-        except (json.JSONDecodeError, IndexError):
+        if not data:
             return None
 
         hooks = [
