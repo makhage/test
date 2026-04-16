@@ -512,7 +512,7 @@ def transcribe_video(video_url: str) -> str:
             client = genai.Client(api_key=settings.google_api_key)
             uploaded = client.files.upload(file=str(audio_file))
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 contents=[
                     uploaded,
                     "Transcribe this audio accurately. Return only the transcription text, no commentary.",
