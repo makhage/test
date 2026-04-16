@@ -457,12 +457,13 @@ def scrape_creator_youtube(channel_url: str) -> dict[str, Any]:
 def transcribe_video(video_url: str) -> str:
     """Download a video's audio and transcribe it with OpenAI Whisper."""
     settings = get_settings()
-    if not settings.openai_api_key:
+    if not settings.openai_api_key and not settings.openai_oauth_client_id:
         return ""
 
     try:
         import yt_dlp
-        from openai import OpenAI
+
+        from social_agent.auth import get_openai_client
 
         # Download audio only
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -494,7 +495,7 @@ def transcribe_video(video_url: str) -> str:
                 return "(Video too long to transcribe — over 25MB audio)"
 
             # Transcribe with Whisper
-            client = OpenAI(api_key=settings.openai_api_key)
+            client = get_openai_client()
             with open(audio_file, "rb") as f:
                 transcript = client.audio.transcriptions.create(
                     model="whisper-1",
@@ -676,7 +677,7 @@ def analyze_creator_niche(
 
     # --- Transcribe videos from ALL platforms ---
     video_transcripts: list[dict] = []
-    if transcribe_videos and all_video_urls and settings.openai_api_key:
+    if transcribe_videos and all_video_urls and (settings.openai_api_key or settings.openai_oauth_client_id):
         # Spread transcriptions across platforms for a balanced view
         platform_groups: dict[str, list[str]] = {}
         for platform, url in all_video_urls:

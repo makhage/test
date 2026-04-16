@@ -20,6 +20,7 @@ DATA_DIR = PROJECT_ROOT / "data"
 class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
+    openai_oauth_client_id: str = ""
 
     twitter_api_key: str = ""
     twitter_api_secret: str = ""

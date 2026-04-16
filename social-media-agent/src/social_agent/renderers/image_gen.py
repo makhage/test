@@ -30,7 +30,7 @@ def generate_background(
         PIL Image or None if generation fails.
     """
     settings = get_settings()
-    if not settings.openai_api_key:
+    if not settings.openai_api_key and not settings.openai_oauth_client_id:
         return None
 
     color_hint = ""
@@ -44,9 +44,9 @@ def generate_background(
     )
 
     try:
-        from openai import OpenAI
+        from social_agent.auth import get_openai_client
 
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = get_openai_client()
         response = client.images.generate(
             model="dall-e-3",
             prompt=full_prompt,
