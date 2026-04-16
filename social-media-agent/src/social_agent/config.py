@@ -51,3 +51,25 @@ def ensure_output_dirs() -> None:
     for subdir in ["tweets", "carousels", "tiktok"]:
         (OUTPUT_DIR / subdir).mkdir(parents=True, exist_ok=True)
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def save_env_var(key: str, value: str) -> None:
+    """Save or update a key=value pair in the project .env file."""
+    env_path = PROJECT_ROOT / ".env"
+    lines: list[str] = []
+    found = False
+
+    if env_path.exists():
+        lines = env_path.read_text().splitlines()
+        for i, line in enumerate(lines):
+            if line.startswith(f"{key}="):
+                lines[i] = f"{key}={value}"
+                found = True
+                break
+
+    if not found:
+        lines.append(f"{key}={value}")
+
+    env_path.write_text("\n".join(lines) + "\n")
+    # Update current process env so get_settings() picks it up
+    os.environ[key] = value

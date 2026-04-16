@@ -63,19 +63,7 @@ if not _has_openai:
         unsafe_allow_html=True,
     )
 
-    if _oauth_signed_in:
-        st.success("OpenAI  —  Signed in via OAuth")
-    elif _has_openai_key:
-        st.success("OpenAI API Key  —  Connected")
-    elif _has_openai_oauth:
-        st.warning("OpenAI OAuth  —  Not signed in yet")
-        if st.button("Sign in to OpenAI", type="primary", use_container_width=True):
-            st.switch_page("pages/13_Settings.py")
-    else:
-        st.error("OpenAI  —  Not configured")
-        st.caption("Add `OPENAI_OAUTH_CLIENT_ID` to `.env`, then click Sign In")
-
-    if st.button("Go to Settings", use_container_width=True):
+    if st.button("Connect OpenAI Account", type="primary", use_container_width=True):
         st.switch_page("pages/13_Settings.py")
 
     st.markdown("")
