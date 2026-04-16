@@ -367,6 +367,7 @@ def scrape_creator_instagram_public(instagram_url: str) -> dict[str, Any]:
     """Scrape an Instagram profile using yt-dlp (no Graph API needed).
 
     Works with public profiles — extracts reel/video URLs and captions.
+    Instagram frequently blocks scrapers so we fail silently.
     """
     try:
         import yt_dlp
@@ -376,6 +377,8 @@ def scrape_creator_instagram_public(instagram_url: str) -> dict[str, Any]:
             "no_warnings": True,
             "extract_flat": True,
             "playlistend": 20,
+            "ignoreerrors": True,
+            "logger": _SilentLogger(),
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -454,10 +457,20 @@ def scrape_creator_youtube(channel_url: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+class _SilentLogger:
+    """yt-dlp logger that suppresses all error output."""
+    def debug(self, msg): pass
+    def info(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): pass
+
+
 def transcribe_video(video_url: str) -> str:
     """Download a video's audio and transcribe it with Gemini."""
     settings = get_settings()
     if not settings.google_api_key:
+        return ""
+    if not video_url or not video_url.strip():
         return ""
 
     try:
@@ -472,6 +485,8 @@ def transcribe_video(video_url: str) -> str:
                 "no_warnings": True,
                 "format": "bestaudio/best",
                 "outtmpl": str(Path(tmpdir) / "audio.%(ext)s"),
+                "ignoreerrors": True,
+                "logger": _SilentLogger(),
                 "postprocessors": [{
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
@@ -679,6 +694,8 @@ def analyze_creator_niche(
         # Spread transcriptions across platforms for a balanced view
         platform_groups: dict[str, list[str]] = {}
         for platform, url in all_video_urls:
+            if not url or not url.strip():
+                continue
             if platform not in platform_groups:
                 platform_groups[platform] = []
             platform_groups[platform].append(url)
