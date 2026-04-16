@@ -61,14 +61,34 @@ def chat_json(
     max_tokens: int = 2000,
     model: str | None = None,
 ) -> dict[str, Any]:
-    """Send a chat request and parse the response as JSON."""
-    raw = chat(system=system, user=user, max_tokens=max_tokens, model=model)
-    return parse_json(raw)
+    """Send a chat request with JSON response mode and parse the result."""
+    from google.genai import types
+
+    client = _get_client()
+    response = client.models.generate_content(
+        model=model or TEXT_MODEL,
+        contents=user,
+        config=types.GenerateContentConfig(
+            system_instruction=system + "\n\nAlways respond with valid JSON only. No markdown fences, no commentary.",
+            max_output_tokens=max_tokens,
+            temperature=0.9,
+            response_mime_type="application/json",
+        ),
+    )
+    return parse_json(response.text or "")
 
 
-def parse_json(raw: str) -> dict[str, Any]:
-    """Extract JSON from a response that may contain markdown fences."""
+def parse_json(raw: str) -> Any:
+    """Extract JSON from a response. Handles markdown fences as fallback."""
+    if not raw:
+        return {}
     text = raw.strip()
+    # Direct parse first (response_mime_type=application/json returns clean JSON)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    # Fallback: strip markdown fences
     try:
         if "```json" in text:
             text = text.split("```json")[1].split("```")[0]
@@ -76,4 +96,13 @@ def parse_json(raw: str) -> dict[str, Any]:
             text = text.split("```")[1].split("```")[0]
         return json.loads(text.strip())
     except (json.JSONDecodeError, IndexError):
-        return {}
+        pass
+    # Fallback: find first { and last }
+    try:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start >= 0 and end > start:
+            return json.loads(text[start:end + 1])
+    except json.JSONDecodeError:
+        pass
+    return {}
