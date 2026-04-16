@@ -455,19 +455,18 @@ def scrape_creator_youtube(channel_url: str) -> dict[str, Any]:
 
 
 def transcribe_video(video_url: str) -> str:
-    """Download a video's audio and transcribe it with OpenAI Whisper."""
+    """Download a video's audio and transcribe it with Gemini."""
     settings = get_settings()
-    if not settings.openai_api_key and not settings.openai_oauth_client_id:
+    if not settings.google_api_key:
         return ""
 
     try:
         import yt_dlp
-
-        from social_agent.auth import get_openai_client
+        from google import genai
+        from google.genai import types
 
         # Download audio only
         with tempfile.TemporaryDirectory() as tmpdir:
-            audio_path = Path(tmpdir) / "audio.mp3"
             ydl_opts = {
                 "quiet": True,
                 "no_warnings": True,
@@ -490,20 +489,21 @@ def transcribe_video(video_url: str) -> str:
 
             audio_file = audio_files[0]
 
-            # Check file size — Whisper API limit is 25MB
-            if audio_file.stat().st_size > 25 * 1024 * 1024:
-                return "(Video too long to transcribe — over 25MB audio)"
+            # Cap at 50MB (Gemini limit is 2GB but we want speed)
+            if audio_file.stat().st_size > 50 * 1024 * 1024:
+                return "(Video too long to transcribe — over 50MB audio)"
 
-            # Transcribe with Whisper
-            client = get_openai_client()
-            with open(audio_file, "rb") as f:
-                transcript = client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=f,
-                    response_format="text",
-                )
-
-            return transcript[:5000]  # Cap at 5000 chars
+            # Transcribe with Gemini
+            client = genai.Client(api_key=settings.google_api_key)
+            uploaded = client.files.upload(file=str(audio_file))
+            response = client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=[
+                    uploaded,
+                    "Transcribe this audio accurately. Return only the transcription text, no commentary.",
+                ],
+            )
+            return (response.text or "")[:5000]
     except Exception as e:
         return f"(Transcription failed: {e})"
 
@@ -675,7 +675,7 @@ def analyze_creator_niche(
 
     # --- Transcribe videos from ALL platforms ---
     video_transcripts: list[dict] = []
-    if transcribe_videos and all_video_urls and (settings.openai_api_key or settings.openai_oauth_client_id):
+    if transcribe_videos and all_video_urls and settings.google_api_key:
         # Spread transcriptions across platforms for a balanced view
         platform_groups: dict[str, list[str]] = {}
         for platform, url in all_video_urls:

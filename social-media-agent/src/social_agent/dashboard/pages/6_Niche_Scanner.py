@@ -164,7 +164,7 @@ if platforms_to_scrape:
 st.markdown("---")
 
 # --- Run Analysis ---
-can_analyze = bool(settings.openai_api_key or settings.openai_oauth_client_id)
+can_analyze = bool(settings.google_api_key)
 
 if st.button(
     "Analyze My Niche",

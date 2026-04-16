@@ -172,7 +172,7 @@ if st.button(
     "Generate Calendar",
     type="primary",
     use_container_width=True,
-    disabled=not bool(settings.openai_api_key or settings.openai_oauth_client_id),
+    disabled=not bool(settings.google_api_key),
 ):
     topic_list = [t.strip() for t in topics_input.split(",")] if topics_input else None
 
@@ -204,5 +204,5 @@ if st.button(
         except Exception as e:
             st.error(f"Calendar generation failed: {e}")
 
-if not settings.openai_api_key or settings.openai_oauth_client_id:
+if not settings.google_api_key:
     st.info("Set `ANTHROPIC_API_KEY` in `.env` to enable calendar generation.")

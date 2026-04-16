@@ -60,7 +60,7 @@ if scan_clicked:
             st.error(f"Scan failed: {e}")
 
 # Analyze button
-if st.button("Analyze Strategies", disabled=not bool(settings.openai_api_key or settings.openai_oauth_client_id)):
+if st.button("Analyze Strategies", disabled=not bool(settings.google_api_key)):
     with st.spinner("Analyzing competitor strategies with Claude..."):
         try:
             from social_agent.research.competitors import analyze_competitors

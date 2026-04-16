@@ -1,11 +1,11 @@
-"""Agent loop: GPT-4o with tool dispatch for social media content creation."""
+"""Agent loop: Gemini with tool dispatch for social media content creation."""
 
 from __future__ import annotations
 
 import json
 from typing import Any
 
-from social_agent.auth import get_openai_client
+from social_agent.ai import _get_client
 from social_agent.generators.carousel import generate_carousel
 from social_agent.generators.tiktok import generate_tiktok_caption
 from social_agent.generators.tweet import generate_thread, generate_tweet
@@ -34,105 +34,10 @@ You have the following tools available:
 - generate_carousel: Create carousel slide content
 - generate_tiktok: Create a TikTok caption/script
 - render_carousel: Render carousel slides as branded images
-- schedule_post: Schedule content for posting
-- list_scheduled: View pending posts
 
 Always use the influencer's authentic voice. Never produce generic AI content.
 Ask clarifying questions if the request is ambiguous.
 """
-
-# OpenAI function-calling format
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_tweet",
-            "description": "Generate a tweet in the influencer's voice about a given topic.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topic": {"type": "string", "description": "What the tweet should be about"},
-                    "style": {
-                        "type": "string",
-                        "description": "Tone/style: engaging, educational, controversial, storytelling",
-                        "default": "engaging",
-                    },
-                    "is_thread": {
-                        "type": "boolean",
-                        "description": "Whether to generate a multi-tweet thread",
-                        "default": False,
-                    },
-                    "num_tweets": {
-                        "type": "integer",
-                        "description": "Number of tweets in the thread (if is_thread is true)",
-                        "default": 5,
-                    },
-                },
-                "required": ["topic"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_carousel",
-            "description": "Generate carousel slide content for Instagram or TikTok.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topic": {"type": "string", "description": "Carousel topic"},
-                    "num_slides": {
-                        "type": "integer",
-                        "description": "Number of slides (default 7)",
-                        "default": 7,
-                    },
-                    "platform": {
-                        "type": "string",
-                        "enum": ["instagram", "tiktok"],
-                        "default": "instagram",
-                    },
-                },
-                "required": ["topic"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "render_carousel",
-            "description": "Render carousel data as branded PNG images.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "carousel_json": {
-                        "type": "string",
-                        "description": "JSON-serialized Carousel object from generate_carousel",
-                    },
-                },
-                "required": ["carousel_json"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_tiktok",
-            "description": "Generate a TikTok caption and script notes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topic": {"type": "string", "description": "TikTok video topic"},
-                    "style": {
-                        "type": "string",
-                        "description": "Style: educational, storytelling, trend-reaction, tutorial",
-                        "default": "educational",
-                    },
-                },
-                "required": ["topic"],
-            },
-        },
-    },
-]
 
 
 def _build_agent_system(
@@ -157,57 +62,65 @@ def _build_agent_system(
     )
 
 
-def _handle_tool_call(
-    tool_name: str,
-    tool_input: dict[str, Any],
+def _tool_generate_tweet(
+    topic: str,
+    style: str = "engaging",
+    is_thread: bool = False,
+    num_tweets: int = 5,
+    *,
     profile: InfluencerProfile,
     intelligence: NicheIntelligence | None = None,
 ) -> str:
-    """Execute a tool and return the result as a string."""
-    if tool_name == "generate_tweet":
-        if tool_input.get("is_thread"):
-            result = generate_thread(
-                topic=tool_input["topic"],
-                profile=profile,
-                num_tweets=tool_input.get("num_tweets", 5),
-                intelligence=intelligence,
-            )
-        else:
-            result = generate_tweet(
-                topic=tool_input["topic"],
-                profile=profile,
-                style=tool_input.get("style", "engaging"),
-                intelligence=intelligence,
-            )
-        return result.model_dump_json(indent=2)
-
-    elif tool_name == "generate_carousel":
-        platform = Platform(tool_input.get("platform", "instagram"))
-        result = generate_carousel(
-            topic=tool_input["topic"],
-            profile=profile,
-            num_slides=tool_input.get("num_slides", 7),
-            platform=platform,
-            intelligence=intelligence,
+    """Generate a tweet or thread."""
+    if is_thread:
+        result = generate_thread(
+            topic=topic, profile=profile, num_tweets=num_tweets, intelligence=intelligence
         )
-        return result.model_dump_json(indent=2)
-
-    elif tool_name == "render_carousel":
-        carousel_data = json.loads(tool_input["carousel_json"])
-        carousel = Carousel(**carousel_data)
-        paths = render_carousel(carousel, profile.brand)
-        return json.dumps({"rendered_paths": [str(p) for p in paths]}, indent=2)
-
-    elif tool_name == "generate_tiktok":
-        result = generate_tiktok_caption(
-            topic=tool_input["topic"],
-            profile=profile,
-            style=tool_input.get("style", "educational"),
-            intelligence=intelligence,
+    else:
+        result = generate_tweet(
+            topic=topic, profile=profile, style=style, intelligence=intelligence
         )
-        return result.model_dump_json(indent=2)
+    return result.model_dump_json(indent=2)
 
-    return json.dumps({"error": f"Unknown tool: {tool_name}"})
+
+def _tool_generate_carousel(
+    topic: str,
+    num_slides: int = 7,
+    platform: str = "instagram",
+    *,
+    profile: InfluencerProfile,
+    intelligence: NicheIntelligence | None = None,
+) -> str:
+    """Generate a carousel."""
+    result = generate_carousel(
+        topic=topic,
+        profile=profile,
+        num_slides=num_slides,
+        platform=Platform(platform),
+        intelligence=intelligence,
+    )
+    return result.model_dump_json(indent=2)
+
+
+def _tool_generate_tiktok(
+    topic: str,
+    style: str = "educational",
+    *,
+    profile: InfluencerProfile,
+    intelligence: NicheIntelligence | None = None,
+) -> str:
+    """Generate a TikTok caption."""
+    result = generate_tiktok_caption(
+        topic=topic, profile=profile, style=style, intelligence=intelligence
+    )
+    return result.model_dump_json(indent=2)
+
+
+def _tool_render_carousel(carousel_json: str, *, profile: InfluencerProfile, **_) -> str:
+    """Render a carousel as images."""
+    carousel = Carousel(**json.loads(carousel_json))
+    paths = render_carousel(carousel, profile.brand)
+    return json.dumps({"rendered_paths": [str(p) for p in paths]}, indent=2)
 
 
 def run_agent(
@@ -216,44 +129,51 @@ def run_agent(
     intelligence: NicheIntelligence | None = None,
     max_iterations: int = 10,
 ) -> str:
-    """Run the agent loop: send user message, handle tool calls, return final response."""
-    client = get_openai_client()
+    """Run the agent loop using Gemini's automatic function calling.
+
+    Gemini's SDK supports passing Python functions directly as tools,
+    so it handles the tool-dispatch loop for us.
+    """
+    from google.genai import types
+
+    client = _get_client()
     system = _build_agent_system(profile, intelligence)
 
-    messages: list[dict] = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user_message},
-    ]
-
-    for _ in range(max_iterations):
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            max_tokens=4096,
-            tools=TOOLS,
-            messages=messages,
+    # Wrap tool functions with the profile/intelligence context
+    def tweet_tool(topic: str, style: str = "engaging", is_thread: bool = False, num_tweets: int = 5) -> str:
+        """Generate a tweet or thread in the influencer's voice."""
+        return _tool_generate_tweet(
+            topic, style, is_thread, num_tweets,
+            profile=profile, intelligence=intelligence,
         )
 
-        choice = response.choices[0]
+    def carousel_tool(topic: str, num_slides: int = 7, platform: str = "instagram") -> str:
+        """Generate carousel slide content for Instagram or TikTok."""
+        return _tool_generate_carousel(
+            topic, num_slides, platform,
+            profile=profile, intelligence=intelligence,
+        )
 
-        # No tool calls — return the text
-        if not choice.message.tool_calls:
-            return choice.message.content or ""
+    def tiktok_tool(topic: str, style: str = "educational") -> str:
+        """Generate a TikTok caption and script notes."""
+        return _tool_generate_tiktok(
+            topic, style,
+            profile=profile, intelligence=intelligence,
+        )
 
-        # Process tool calls
-        messages.append(choice.message)
+    def render_tool(carousel_json: str) -> str:
+        """Render a carousel JSON as branded PNG images."""
+        return _tool_render_carousel(carousel_json, profile=profile)
 
-        for tool_call in choice.message.tool_calls:
-            tool_input = json.loads(tool_call.function.arguments)
-            result = _handle_tool_call(
-                tool_name=tool_call.function.name,
-                tool_input=tool_input,
-                profile=profile,
-                intelligence=intelligence,
-            )
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": result,
-            })
-
-    return "Agent reached maximum iterations. Please try a more specific request."
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash-exp",
+            contents=user_message,
+            config=types.GenerateContentConfig(
+                system_instruction=system,
+                tools=[tweet_tool, carousel_tool, tiktok_tool, render_tool],
+            ),
+        )
+        return response.text or "(No response)"
+    except Exception as e:
+        return f"Agent error: {e}"

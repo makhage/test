@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "AI-powered social media content automation agent for influencers"
 requires-python = ">=3.11"
 dependencies = [
-    "openai>=1.50.0",
+    "google-genai>=0.3.0",
     "tweepy>=4.14.0",
     "requests>=2.31.0",
     "pillow>=10.2.0",

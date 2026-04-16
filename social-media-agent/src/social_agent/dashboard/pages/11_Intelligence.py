@@ -22,7 +22,7 @@ st.markdown("Advanced content intelligence — repurpose, mine, learn, and disco
 
 profile = load_profile()
 settings = get_settings()
-has_api = bool(settings.openai_api_key or settings.openai_oauth_client_id)
+has_api = bool(settings.google_api_key)
 
 tab_repurpose, tab_comments, tab_learn, tab_trends, tab_gaps, tab_recycle, tab_series, tab_personas = st.tabs([
     "Repurpose", "Comment Mining", "Learning Loop", "Trend Velocity",

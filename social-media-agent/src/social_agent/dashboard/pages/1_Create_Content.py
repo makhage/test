@@ -25,7 +25,7 @@ profile = load_profile()
 settings = get_settings()
 
 # Check API key
-has_api_key = bool(settings.openai_api_key or settings.openai_oauth_client_id)
+has_api_key = bool(settings.google_api_key)
 if not has_api_key:
     st.warning("Set `ANTHROPIC_API_KEY` in your `.env` file to enable content generation.")
 

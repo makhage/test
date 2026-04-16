@@ -117,7 +117,7 @@ class TestPerformanceLearningLoop:
             assert "likes" in d
             assert "total_engagement" in d
 
-    @patch("social_agent.ai.get_openai_client")
+    @patch("social_agent.ai._get_client")
     def test_analyze_performance_no_data(self, mock_client, monkeypatch):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
@@ -148,7 +148,7 @@ class TestPerformanceLearningLoop:
 
 
 class TestContentGapAnalysis:
-    @patch("social_agent.ai.get_openai_client")
+    @patch("social_agent.ai._get_client")
     def test_no_audience_data_returns_error(self, mock_client, monkeypatch):
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
@@ -164,12 +164,11 @@ class TestContentGapAnalysis:
 
 
 class TestSeriesPlanner:
-    @patch("social_agent.ai.get_openai_client")
+    @patch("social_agent.ai._get_client")
     def test_plan_series(self, mock_client_fn, profile):
         mock_client = MagicMock()
         mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = json.dumps({
+        mock_response.text = json.dumps({
             "series_title": "Python Zero to Hero",
             "series_hook": "5 parts to mastery",
             "parts": [
@@ -179,7 +178,7 @@ class TestSeriesPlanner:
             "posting_schedule": "every 2 days",
             "cross_platform_strategy": "Tease on Twitter, full on IG",
         })
-        mock_client.chat.completions.create.return_value = mock_response
+        mock_client.models.generate_content.return_value = mock_response
         mock_client_fn.return_value = mock_client
 
         from social_agent.generators.series_planner import plan_series
@@ -206,10 +205,10 @@ class TestEvergeenRecycler:
 
 
 class TestAudiencePersonas:
-    @patch("social_agent.ai.get_openai_client")
+    @patch("social_agent.ai._get_client")
     def test_no_data_handles_gracefully(self, mock_client_fn, profile, monkeypatch):
         # Mock the AI to raise an error (simulating no auth)
-        mock_client_fn.side_effect = ValueError("No OpenAI credentials")
+        mock_client_fn.side_effect = ValueError("No Google API key")
 
         from social_agent.research.audience_personas import build_audience_personas
         result = build_audience_personas(profile)

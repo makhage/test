@@ -31,14 +31,11 @@ replies_app = typer.Typer(help="Manage comment replies and engagement.")
 analytics_app = typer.Typer(help="Content performance analytics.")
 calendar_app = typer.Typer(help="Content calendar management.")
 
-auth_app = typer.Typer(help="OpenAI OAuth authentication.")
-
 app.add_typer(schedule_app, name="schedule")
 app.add_typer(research_app, name="research")
 app.add_typer(replies_app, name="replies")
 app.add_typer(analytics_app, name="analytics")
 app.add_typer(calendar_app, name="calendar")
-app.add_typer(auth_app, name="auth")
 
 
 # --- Tweet ---
@@ -323,76 +320,6 @@ def calendar_generate(
             entry.get("content_type", ""),
             entry.get("topic", ""),
         )
-    console.print(table)
-
-
-# --- Auth ---
-
-
-@auth_app.command("login")
-def auth_login() -> None:
-    """Sign in to OpenAI via OAuth to access Codex."""
-    from social_agent.auth import authorize
-    settings = get_settings()
-    client_id = settings.openai_oauth_client_id
-
-    if not client_id:
-        console.print(
-            "[red]OPENAI_OAUTH_CLIENT_ID not set.[/red]\n"
-            "Add it to your .env file or export it as an environment variable.\n"
-            "Register your app at https://platform.openai.com/settings/apps"
-        )
-        raise typer.Exit(1)
-
-    try:
-        tokens = authorize(client_id)
-        console.print("[green]✓[/green] Signed in to OpenAI successfully.")
-        if "scope" in tokens:
-            console.print(f"  [dim]Scopes: {tokens['scope']}[/dim]")
-    except Exception as e:
-        console.print(f"[red]OAuth sign-in failed:[/red] {e}")
-        raise typer.Exit(1)
-
-
-@auth_app.command("logout")
-def auth_logout() -> None:
-    """Remove stored OpenAI OAuth tokens."""
-    from social_agent.auth import logout
-    if logout():
-        console.print("[green]✓[/green] OpenAI OAuth tokens removed.")
-    else:
-        console.print("[dim]No stored tokens found.[/dim]")
-
-
-@auth_app.command("status")
-def auth_status() -> None:
-    """Check current OpenAI auth status."""
-    from social_agent.auth import _load_tokens, _tokens_expired
-    settings = get_settings()
-
-    table = Table(title="Auth Status")
-    table.add_column("Method", style="cyan")
-    table.add_column("Status", style="white")
-
-    # OAuth
-    if settings.openai_oauth_client_id:
-        tokens = _load_tokens()
-        if tokens and not _tokens_expired(tokens):
-            table.add_row("OpenAI OAuth", "[green]Active[/green]")
-        elif tokens:
-            table.add_row("OpenAI OAuth", "[yellow]Expired (will auto-refresh)[/yellow]")
-        else:
-            table.add_row("OpenAI OAuth", "[red]Not signed in (run: social-agent auth login)[/red]")
-    else:
-        table.add_row("OpenAI OAuth", "[dim]Not configured (set OPENAI_OAUTH_CLIENT_ID)[/dim]")
-
-    # API Key
-    if settings.openai_api_key:
-        masked = settings.openai_api_key[:8] + "..." + settings.openai_api_key[-4:]
-        table.add_row("OpenAI API Key", f"[green]Set[/green] ({masked})")
-    else:
-        table.add_row("OpenAI API Key", "[dim]Not set[/dim]")
-
     console.print(table)
 
 

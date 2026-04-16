@@ -1,4 +1,4 @@
-"""Settings & Authentication — simple API key setup in the GUI."""
+"""Settings — paste Gemini API key in the GUI."""
 
 import sys
 from pathlib import Path
@@ -17,60 +17,58 @@ st.markdown("# Settings")
 
 settings = get_settings()
 
-# ── OpenAI API Key ──────────────────────────────────────────────────────────
+# ── Gemini API Key ──────────────────────────────────────────────────────────
 
-st.markdown("### OpenAI")
+st.markdown("### Google Gemini")
 
-has_key = bool(settings.openai_api_key)
+has_key = bool(settings.google_api_key)
 
 if has_key:
-    masked = settings.openai_api_key[:8] + "..." + settings.openai_api_key[-4:]
-    st.success(f"Connected — {masked}")
+    masked = settings.google_api_key[:8] + "..." + settings.google_api_key[-4:]
+    st.success(f"Connected — `{masked}`")
+    st.caption("Gemini powers text generation, image generation (Imagen 3), and audio transcription.")
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Replace Key", use_container_width=True):
-            st.session_state["editing_openai_key"] = True
+            st.session_state["editing_key"] = True
             st.rerun()
     with col2:
         if st.button("Disconnect", use_container_width=True):
-            save_env_var("OPENAI_API_KEY", "")
+            save_env_var("GOOGLE_API_KEY", "")
             st.rerun()
 
-    if st.session_state.get("editing_openai_key"):
+    if st.session_state.get("editing_key"):
         new_key = st.text_input(
             "New API Key",
             type="password",
-            placeholder="sk-...",
-            key="new_openai_key",
+            placeholder="AIza...",
+            key="new_google_key",
         )
         if st.button("Save", type="primary", use_container_width=True):
             if new_key.strip():
-                save_env_var("OPENAI_API_KEY", new_key.strip())
-                st.session_state["editing_openai_key"] = False
+                save_env_var("GOOGLE_API_KEY", new_key.strip())
+                st.session_state["editing_key"] = False
                 st.success("Updated!")
                 st.rerun()
 else:
     st.markdown(
-        "Paste your OpenAI API key to start generating content. "
-        "Get one at **[platform.openai.com/api-keys](https://platform.openai.com/api-keys)** "
-        "(click \"Create new secret key\")."
+        "Paste your Google Gemini API key to start generating content. "
+        "Get one for free at **[aistudio.google.com/apikey](https://aistudio.google.com/apikey)** — "
+        "click \"Create API key\"."
     )
 
     api_key = st.text_input(
-        "OpenAI API Key",
+        "Gemini API Key",
         type="password",
-        placeholder="sk-...",
+        placeholder="AIza...",
         label_visibility="collapsed",
     )
 
     if st.button("Connect", type="primary", use_container_width=True, disabled=not api_key):
-        if api_key.strip().startswith("sk-"):
-            save_env_var("OPENAI_API_KEY", api_key.strip())
-            st.success("Connected!")
-            st.rerun()
-        else:
-            st.error("Invalid key format. OpenAI keys start with `sk-`.")
+        save_env_var("GOOGLE_API_KEY", api_key.strip())
+        st.success("Connected!")
+        st.rerun()
 
 st.markdown("---")
 

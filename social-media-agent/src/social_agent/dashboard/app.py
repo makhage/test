@@ -45,21 +45,20 @@ st.caption("AI-powered content automation for creators")
 # ── Setup Banner ────────────────────────────────────────────────────────────
 
 from social_agent.config import get_settings
-from social_agent.auth import _load_tokens, _tokens_expired
 
 _settings = get_settings()
-_has_openai = bool(_settings.openai_api_key)
+_has_gemini = bool(_settings.google_api_key)
 
-if not _has_openai:
+if not _has_gemini:
     st.markdown(
         '<div class="card" style="border:1px solid #F59E0B40;background:#F59E0B10;padding:1.25rem;">'
         '<h4 style="margin:0 0 0.75rem 0;color:#F59E0B;">Setup Required</h4>'
-        '<p style="color:#CBD5E1;margin:0 0 0.75rem 0;">Add your OpenAI API key to start generating content.</p>'
+        '<p style="color:#CBD5E1;margin:0 0 0.75rem 0;">Add your Gemini API key to start generating content.</p>'
         '</div>',
         unsafe_allow_html=True,
     )
 
-    if st.button("Connect OpenAI", type="primary", use_container_width=True):
+    if st.button("Connect Gemini", type="primary", use_container_width=True):
         st.switch_page("pages/13_Settings.py")
 
     st.markdown("")

@@ -1,9 +1,9 @@
-"""Shared AI client — all text generation goes through OpenAI (GPT-4o).
+"""Shared AI client — all text generation goes through Google Gemini.
 
 This module provides a single `chat()` function that every generator
 and research module calls. Centralizing here means:
 - One place to swap models
-- One place for auth (OAuth or API key via get_openai_client)
+- One place for auth (via GOOGLE_API_KEY)
 - Consistent JSON extraction from responses
 """
 
@@ -12,9 +12,23 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from social_agent.auth import get_openai_client
+from social_agent.config import get_settings
 
-MODEL = "gpt-4o"
+TEXT_MODEL = "gemini-2.0-flash-exp"
+IMAGE_MODEL = "imagen-3.0-generate-002"
+
+
+def _get_client():
+    """Get a configured Gemini client."""
+    from google import genai
+
+    settings = get_settings()
+    if not settings.google_api_key:
+        raise ValueError(
+            "Google API key not configured. Add it in the Settings page of the dashboard, "
+            "or set GOOGLE_API_KEY in your .env file."
+        )
+    return genai.Client(api_key=settings.google_api_key)
 
 
 def chat(
@@ -24,27 +38,20 @@ def chat(
     max_tokens: int = 2000,
     model: str | None = None,
 ) -> str:
-    """Send a chat completion request and return the assistant's text.
+    """Send a chat request to Gemini and return the text response."""
+    from google.genai import types
 
-    Args:
-        system: System prompt.
-        user: User prompt.
-        max_tokens: Maximum tokens in the response.
-        model: Override the default model.
-
-    Returns:
-        The assistant's response text.
-    """
-    client = get_openai_client()
-    response = client.chat.completions.create(
-        model=model or MODEL,
-        max_tokens=max_tokens,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
+    client = _get_client()
+    response = client.models.generate_content(
+        model=model or TEXT_MODEL,
+        contents=user,
+        config=types.GenerateContentConfig(
+            system_instruction=system,
+            max_output_tokens=max_tokens,
+            temperature=0.9,
+        ),
     )
-    return response.choices[0].message.content or ""
+    return response.text or ""
 
 
 def chat_json(
@@ -54,11 +61,7 @@ def chat_json(
     max_tokens: int = 2000,
     model: str | None = None,
 ) -> dict[str, Any]:
-    """Send a chat request and parse the response as JSON.
-
-    Handles markdown code fences (```json ... ```) automatically.
-    Returns an empty dict on parse failure.
-    """
+    """Send a chat request and parse the response as JSON."""
     raw = chat(system=system, user=user, max_tokens=max_tokens, model=model)
     return parse_json(raw)
 

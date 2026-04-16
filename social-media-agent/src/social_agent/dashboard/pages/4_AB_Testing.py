@@ -45,7 +45,7 @@ if st.button(
     "Generate Variants",
     type="primary",
     use_container_width=True,
-    disabled=not bool(settings.openai_api_key or settings.openai_oauth_client_id),
+    disabled=not bool(settings.google_api_key),
 ):
     if not ab_topic:
         st.warning("Enter a topic first.")
@@ -74,7 +74,7 @@ if st.button(
             except Exception as e:
                 st.error(f"Generation failed: {e}")
 
-if not settings.openai_api_key or settings.openai_oauth_client_id:
+if not settings.google_api_key:
     st.info("Set `ANTHROPIC_API_KEY` in `.env` to enable variant generation.")
 
 st.markdown("---")

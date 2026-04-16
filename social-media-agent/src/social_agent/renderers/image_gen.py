@@ -1,12 +1,10 @@
-"""DALL-E background image generation for carousel slides."""
+"""Gemini Imagen background image generation for carousel slides."""
 
 from __future__ import annotations
 
 import io
-from pathlib import Path
 from typing import Optional
 
-import requests
 from PIL import Image
 
 from social_agent.config import get_settings
@@ -18,19 +16,19 @@ def generate_background(
     brand_colors: Optional[list[str]] = None,
     size: str = "1024x1024",
 ) -> Optional[Image.Image]:
-    """Generate a background image using DALL-E.
+    """Generate a background image using Gemini Imagen.
 
     Args:
         prompt: Description of the desired background.
         style: Visual style modifier.
         brand_colors: List of hex colors to incorporate.
-        size: Image size (DALL-E supported sizes).
+        size: Image size (ignored — Imagen uses aspect ratios).
 
     Returns:
         PIL Image or None if generation fails.
     """
     settings = get_settings()
-    if not settings.openai_api_key and not settings.openai_oauth_client_id:
+    if not settings.google_api_key:
         return None
 
     color_hint = ""
@@ -44,20 +42,24 @@ def generate_background(
     )
 
     try:
-        from social_agent.auth import get_openai_client
+        from google import genai
+        from google.genai import types
 
-        client = get_openai_client()
-        response = client.images.generate(
-            model="dall-e-3",
+        client = genai.Client(api_key=settings.google_api_key)
+        response = client.models.generate_images(
+            model="imagen-3.0-generate-002",
             prompt=full_prompt,
-            size=size,
-            quality="standard",
-            n=1,
+            config=types.GenerateImagesConfig(
+                number_of_images=1,
+                aspect_ratio="1:1",
+            ),
         )
-        image_url = response.data[0].url
-        img_response = requests.get(image_url, timeout=30)
-        img_response.raise_for_status()
-        return Image.open(io.BytesIO(img_response.content))
+
+        if not response.generated_images:
+            return None
+
+        image_bytes = response.generated_images[0].image.image_bytes
+        return Image.open(io.BytesIO(image_bytes))
     except Exception:
         return None
 
