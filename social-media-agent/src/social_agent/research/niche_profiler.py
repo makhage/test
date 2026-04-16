@@ -786,6 +786,28 @@ def analyze_creator_niche(
     finally:
         session.close()
 
+    # --- Update soul.md + knowledge base so Gemini learns who this creator is ---
+    if "error" not in analysis:
+        try:
+            from social_agent.identity import soul_from_niche_analysis, update_soul
+            from social_agent.knowledge import remember_many
+
+            update_soul(soul_from_niche_analysis(analysis, linktree_data))
+
+            entries = []
+            if desc := analysis.get("niche_description"):
+                entries.append(("niche_insight", f"Niche: {desc}", "niche_scanner", 1.0))
+            for theme in analysis.get("key_themes", [])[:5]:
+                entries.append(("niche_insight", f"Key theme: {theme}", "niche_scanner", 0.9))
+            for pain in analysis.get("audience_pain_points", [])[:7]:
+                entries.append(("content_gap", f"Audience struggles with: {pain}", "niche_scanner (inferred)", 0.7))
+            if style := analysis.get("content_style"):
+                entries.append(("niche_insight", f"Content style: {style}", "niche_scanner", 0.85))
+            if entries:
+                remember_many(entries)
+        except Exception:
+            pass  # Never block on memory layer
+
     return analysis
 
 

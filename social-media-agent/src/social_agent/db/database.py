@@ -114,6 +114,24 @@ class CompetitorPostRecord(Base):
     scraped_at = Column(DateTime, default=datetime.utcnow)
 
 
+class KnowledgeEntry(Base):
+    """Indexed memory — every insight the agent learns gets a row here.
+
+    Gemini can retrieve recent entries to stay grounded in the creator's
+    specific context rather than relying on generic training.
+    """
+    __tablename__ = "knowledge_entries"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    category = Column(String(50), nullable=False, index=True)
+    # e.g. "niche_insight" | "audience_question" | "winning_hook" |
+    #      "performance" | "trend" | "competitor_pattern" | "content_gap"
+    content = Column(Text, nullable=False)  # The actual insight as readable text
+    source = Column(String(200), default="")  # Where it came from (e.g. "r/learnpython")
+    relevance = Column(Float, default=1.0)  # 0-1, for ranking in retrieval
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class NicheIntelligenceRecord(Base):
     __tablename__ = "niche_intelligence"
 

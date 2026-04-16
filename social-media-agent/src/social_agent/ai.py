@@ -1,10 +1,9 @@
 """Shared AI client — all text generation goes through Google Gemini.
 
-This module provides a single `chat()` function that every generator
-and research module calls. Centralizing here means:
-- One place to swap models
-- One place for auth (via GOOGLE_API_KEY)
-- Consistent JSON extraction from responses
+Every call automatically gets the agent's identity (agent.md + skills.md + soul.md)
+plus the most recent knowledge base entries prepended to the system prompt.
+This gives Gemini persistent context about who the creator is and what we've
+learned about their audience.
 """
 
 from __future__ import annotations
@@ -31,14 +30,43 @@ def _get_client():
     return genai.Client(api_key=settings.google_api_key)
 
 
+def _augmented_system(system: str, skip_context: bool = False) -> str:
+    """Prepend identity + knowledge base to the user's system prompt."""
+    if skip_context:
+        return system
+
+    try:
+        from social_agent.identity import load_identity
+        from social_agent.knowledge import build_context_block
+        identity = load_identity()
+        knowledge = build_context_block()
+    except Exception:
+        identity = ""
+        knowledge = ""
+
+    parts = []
+    if identity:
+        parts.append(identity)
+    if knowledge:
+        parts.append(knowledge)
+    parts.append(f"# TASK\n\n{system}")
+    return "\n\n---\n\n".join(parts)
+
+
 def chat(
     *,
     system: str,
     user: str,
     max_tokens: int = 2000,
     model: str | None = None,
+    skip_context: bool = False,
 ) -> str:
-    """Send a chat request to Gemini and return the text response."""
+    """Send a chat request to Gemini and return the text response.
+
+    Args:
+        skip_context: If True, don't prepend identity + knowledge. Use for
+            the niche scanner itself (to avoid chicken-and-egg before soul.md exists).
+    """
     from google.genai import types
 
     client = _get_client()
@@ -46,7 +74,7 @@ def chat(
         model=model or TEXT_MODEL,
         contents=user,
         config=types.GenerateContentConfig(
-            system_instruction=system,
+            system_instruction=_augmented_system(system, skip_context),
             max_output_tokens=max_tokens,
             temperature=0.9,
         ),
@@ -60,11 +88,13 @@ def chat_json(
     user: str,
     max_tokens: int = 2000,
     model: str | None = None,
+    skip_context: bool = False,
 ) -> dict[str, Any]:
-    """Send a chat request and parse as JSON. Tries JSON mode first, falls back to text."""
+    """Send a chat request and parse as JSON. Tries JSON mode, falls back to text."""
     from google.genai import types
 
     client = _get_client()
+    augmented_system = _augmented_system(system, skip_context)
 
     # Try with JSON response mode first
     try:
@@ -72,7 +102,7 @@ def chat_json(
             model=model or TEXT_MODEL,
             contents=user,
             config=types.GenerateContentConfig(
-                system_instruction=system + "\n\nRespond with valid JSON only.",
+                system_instruction=augmented_system + "\n\nRespond with valid JSON only.",
                 max_output_tokens=max_tokens,
                 temperature=0.9,
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
@@ -90,7 +120,7 @@ def chat_json(
         model=model or TEXT_MODEL,
         contents=user + "\n\nRespond with valid JSON only. No markdown fences.",
         config=types.GenerateContentConfig(
-            system_instruction=system,
+            system_instruction=augmented_system,
             max_output_tokens=max_tokens,
             temperature=0.9,
         ),

@@ -182,6 +182,30 @@ def scrape_all_subreddits(
     finally:
         session.close()
 
+    # Index into the knowledge base — real audience signals
+    try:
+        from social_agent.knowledge import remember_many
+
+        entries = []
+        for post in all_posts[:50]:  # Cap to avoid flooding
+            source = f"r/{post['subreddit']}"
+            ctype = post["content_type"]
+            title = post["title"]
+            relevance = min(1.0, post.get("upvotes", 0) / 1000)
+
+            if ctype == "question":
+                entries.append(("audience_question", title, source, relevance))
+            elif ctype == "opinion":
+                entries.append(("hot_take", title, source, relevance))
+            elif ctype == "recommendation":
+                entries.append(("audience_question", title, source, relevance))
+            # tutorials & discoveries are less directly useful as memory
+
+        if entries:
+            remember_many(entries)
+    except Exception:
+        pass
+
     return all_posts
 
 

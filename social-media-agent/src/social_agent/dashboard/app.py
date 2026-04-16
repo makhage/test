@@ -58,7 +58,7 @@ if not _settings.google_api_key:
         unsafe_allow_html=True,
     )
     if st.button("Connect Gemini", type="primary", use_container_width=True):
-        st.switch_page("pages/7_Settings.py")
+        st.switch_page("pages/6_Settings.py")
     st.stop()
 
 # ── Pipeline status — what's done, what's next ─────────────────────────────
@@ -85,28 +85,28 @@ if not has_niche:
     next_step = {
         "title": "Scan your niche",
         "caption": "Paste your Linktree and let the agent discover your topics, audience, and best subreddits.",
-        "page": "pages/1_1_Niche_Scanner.py",
+        "page": "pages/1_Research.py",
         "button": "Start Niche Scanner",
     }
 elif not has_reddit:
     next_step = {
         "title": "Validate with real audience data",
         "caption": "Mine the subreddits you selected to see what questions, hot takes, and phrases your audience actually uses.",
-        "page": "pages/1_2_Reddit_Intel.py",
+        "page": "pages/1_Research.py",
         "button": "Run Reddit Intel",
     }
 elif drafts == 0 and pending == 0:
     next_step = {
         "title": "Create your first post",
         "caption": "Generate tweets, carousels, or TikTok captions in your voice using everything we've learned.",
-        "page": "pages/3_1_Create_Content.py",
+        "page": "pages/3_Create.py",
         "button": "Open Content Studio",
     }
 elif pending > 0:
     next_step = {
         "title": f"Review {pending} pending post{'s' if pending != 1 else ''}",
         "caption": "Approve or reject content before it goes live.",
-        "page": "pages/4_1_Review_Queue.py",
+        "page": "pages/4_Publish.py",
         "button": "Open Review Queue",
     }
 elif not has_analytics and published > 0:
@@ -120,7 +120,7 @@ else:
     next_step = {
         "title": "Keep creating",
         "caption": "Generate more content, or check the Trends page for fresh ideas.",
-        "page": "pages/3_1_Create_Content.py",
+        "page": "pages/3_Create.py",
         "button": "Create More Content",
     }
 
