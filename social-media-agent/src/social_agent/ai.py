@@ -61,18 +61,38 @@ def chat_json(
     max_tokens: int = 2000,
     model: str | None = None,
 ) -> dict[str, Any]:
-    """Send a chat request with JSON response mode and parse the result."""
+    """Send a chat request and parse as JSON. Tries JSON mode first, falls back to text."""
     from google.genai import types
 
     client = _get_client()
+
+    # Try with JSON response mode first
+    try:
+        response = client.models.generate_content(
+            model=model or TEXT_MODEL,
+            contents=user,
+            config=types.GenerateContentConfig(
+                system_instruction=system + "\n\nRespond with valid JSON only.",
+                max_output_tokens=max_tokens,
+                temperature=0.9,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                response_mime_type="application/json",
+            ),
+        )
+        result = parse_json(response.text or "")
+        if result:
+            return result
+    except Exception:
+        pass
+
+    # Fallback: plain text mode with JSON instruction
     response = client.models.generate_content(
         model=model or TEXT_MODEL,
-        contents=user,
+        contents=user + "\n\nRespond with valid JSON only. No markdown fences.",
         config=types.GenerateContentConfig(
-            system_instruction=system + "\n\nAlways respond with valid JSON only. No markdown fences, no commentary.",
+            system_instruction=system,
             max_output_tokens=max_tokens,
             temperature=0.9,
-            response_mime_type="application/json",
         ),
     )
     return parse_json(response.text or "")

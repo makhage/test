@@ -754,16 +754,20 @@ def analyze_creator_niche(
             transcript_text += f"\n[{vt['platform'].upper()} Video: {vt['url']}]\n{vt['transcript'][:2000]}\n"
 
     # --- Analyze with AI ---
-    analysis = chat_json(
-        system="You are an expert social media strategist.",
-        user=NICHE_ANALYSIS_PROMPT.format(
-            creator_content=content_text,
-            video_transcripts=transcript_text if transcript_text else "(No video transcripts available)",
-        ),
-        max_tokens=4000,
-    )
+    try:
+        analysis = chat_json(
+            system="You are an expert social media strategist.",
+            user=NICHE_ANALYSIS_PROMPT.format(
+                creator_content=content_text,
+                video_transcripts=transcript_text if transcript_text else "(No video transcripts available)",
+            ),
+            max_tokens=4000,
+        )
+    except Exception as e:
+        analysis = {"error": f"AI analysis failed: {e}"}
+
     if not analysis:
-        analysis = {"error": "Failed to parse niche analysis"}
+        analysis = {"error": "Failed to parse niche analysis — the AI returned an empty response. Try again."}
 
     # --- Save to database ---
     init_db()
