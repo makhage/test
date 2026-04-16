@@ -1,4 +1,4 @@
-"""Settings & Authentication — fully in-GUI setup, no file editing needed."""
+"""Settings & Authentication — simple API key setup in the GUI."""
 
 import sys
 from pathlib import Path
@@ -9,197 +9,133 @@ import streamlit as st
 
 from social_agent.dashboard.theme import inject_custom_css
 from social_agent.config import get_settings, save_env_var
-from social_agent.auth import _load_tokens, _tokens_expired
 
 st.set_page_config(page_title="Settings", page_icon="Settings", layout="wide")
 inject_custom_css()
 
-
-# ── Helper ──────────────────────────────────────────────────────────────────
-
-def _start_oauth_flow(client_id: str):
-    """Launch the OAuth flow — opens browser and waits for callback."""
-    from social_agent.auth import authorize
-
-    with st.spinner("Waiting for OpenAI sign-in... (check your browser)"):
-        try:
-            authorize(client_id)
-            st.success("Signed in to OpenAI successfully!")
-            st.rerun()
-        except TimeoutError:
-            st.error("Sign-in timed out. Please try again.")
-        except Exception as e:
-            st.error(f"Sign-in failed: {e}")
-
-
-# ── Page ────────────────────────────────────────────────────────────────────
-
 st.markdown("# Settings")
 
 settings = get_settings()
-tokens = _load_tokens()
-has_oauth = bool(settings.openai_oauth_client_id)
-oauth_signed_in = has_oauth and tokens and not _tokens_expired(tokens)
-has_openai = oauth_signed_in or bool(settings.openai_api_key)
 
-# ── OpenAI Sign-In (main section) ──────────────────────────────────────────
+# ── OpenAI API Key ──────────────────────────────────────────────────────────
 
-st.markdown("### OpenAI Account")
+st.markdown("### OpenAI")
 
-if oauth_signed_in:
-    # Signed in — show status
-    st.success("Signed in to OpenAI")
+has_key = bool(settings.openai_api_key)
 
-    saved_at = tokens.get("saved_at", "")
-    expires_in = tokens.get("expires_in", 0)
+if has_key:
+    masked = settings.openai_api_key[:8] + "..." + settings.openai_api_key[-4:]
+    st.success(f"Connected — {masked}")
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Status", "Active")
-    with col2:
-        display_time = saved_at[:19].replace("T", " ") if saved_at else ""
-        st.metric("Signed in at", display_time)
-    with col3:
-        minutes_left = max(0, expires_in // 60)
-        st.metric("Expires in", f"{minutes_left} min")
-
-    if st.button("Sign Out", use_container_width=True):
-        from social_agent.auth import logout
-        logout()
-        st.rerun()
-
-elif has_oauth and tokens:
-    # Token expired
-    st.warning("Your session has expired.")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("Refresh Session", type="primary", use_container_width=True):
-            try:
-                from social_agent.auth import refresh_access_token
-                refresh_access_token(settings.openai_oauth_client_id, tokens.get("refresh_token", ""))
-                st.success("Session refreshed!")
-                st.rerun()
-            except Exception:
-                st.error("Refresh failed. Please sign in again.")
+        if st.button("Replace Key", use_container_width=True):
+            st.session_state["editing_openai_key"] = True
+            st.rerun()
     with col2:
-        if st.button("Sign In Again", use_container_width=True):
-            _start_oauth_flow(settings.openai_oauth_client_id)
+        if st.button("Disconnect", use_container_width=True):
+            save_env_var("OPENAI_API_KEY", "")
+            st.rerun()
 
-elif has_oauth:
-    # Client ID set but not signed in yet
-    st.info("Click below to sign in to your OpenAI account.")
-    if st.button("Sign in to OpenAI", type="primary", use_container_width=True):
-        _start_oauth_flow(settings.openai_oauth_client_id)
-
+    if st.session_state.get("editing_openai_key"):
+        new_key = st.text_input(
+            "New API Key",
+            type="password",
+            placeholder="sk-...",
+            key="new_openai_key",
+        )
+        if st.button("Save", type="primary", use_container_width=True):
+            if new_key.strip():
+                save_env_var("OPENAI_API_KEY", new_key.strip())
+                st.session_state["editing_openai_key"] = False
+                st.success("Updated!")
+                st.rerun()
 else:
-    # First-time setup — guide the user through it
     st.markdown(
-        "Connect your OpenAI account to start generating content. "
-        "This is a one-time setup."
+        "Paste your OpenAI API key to start generating content. "
+        "Get one at **[platform.openai.com/api-keys](https://platform.openai.com/api-keys)** "
+        "(click \"Create new secret key\")."
     )
 
-    st.markdown("#### Step 1: Get your Client ID")
-    st.markdown(
-        "Go to **[platform.openai.com/settings/apps](https://platform.openai.com/settings/apps)**, "
-        "register a new app, and set the redirect URI to:"
-    )
-    st.code("http://127.0.0.1:8484/callback", language=None)
-    st.markdown("Then copy your **Client ID** and paste it below.")
-
-    st.markdown("#### Step 2: Paste it here")
-    client_id_input = st.text_input(
-        "OpenAI Client ID",
-        placeholder="Paste your Client ID here",
+    api_key = st.text_input(
+        "OpenAI API Key",
+        type="password",
+        placeholder="sk-...",
         label_visibility="collapsed",
     )
 
-    if st.button("Save & Sign In", type="primary", use_container_width=True, disabled=not client_id_input):
-        # Save to .env
-        save_env_var("OPENAI_OAUTH_CLIENT_ID", client_id_input.strip())
-        st.success("Client ID saved!")
-        # Start OAuth flow
-        _start_oauth_flow(client_id_input.strip())
+    if st.button("Connect", type="primary", use_container_width=True, disabled=not api_key):
+        if api_key.strip().startswith("sk-"):
+            save_env_var("OPENAI_API_KEY", api_key.strip())
+            st.success("Connected!")
+            st.rerun()
+        else:
+            st.error("Invalid key format. OpenAI keys start with `sk-`.")
 
 st.markdown("---")
 
 # ── Platform Connections ─────────────────────────────────────────────────────
 
-st.markdown("### Platform Connections")
+st.markdown("### Social Media Platforms")
+st.caption("Optional — only needed if you want to auto-publish to these platforms.")
 
 platform_configs = [
     {
-        "name": "Twitter/X",
+        "name": "Twitter / X",
         "connected": bool(settings.twitter_api_key and settings.twitter_access_token),
+        "link": "https://developer.twitter.com/en/portal/dashboard",
         "keys": [
-            ("TWITTER_API_KEY", settings.twitter_api_key),
-            ("TWITTER_API_SECRET", settings.twitter_api_secret),
-            ("TWITTER_ACCESS_TOKEN", settings.twitter_access_token),
-            ("TWITTER_ACCESS_TOKEN_SECRET", settings.twitter_access_token_secret),
-            ("TWITTER_BEARER_TOKEN", settings.twitter_bearer_token),
+            ("TWITTER_API_KEY", settings.twitter_api_key, "API Key"),
+            ("TWITTER_API_SECRET", settings.twitter_api_secret, "API Secret"),
+            ("TWITTER_ACCESS_TOKEN", settings.twitter_access_token, "Access Token"),
+            ("TWITTER_ACCESS_TOKEN_SECRET", settings.twitter_access_token_secret, "Access Token Secret"),
+            ("TWITTER_BEARER_TOKEN", settings.twitter_bearer_token, "Bearer Token"),
         ],
     },
     {
         "name": "Instagram",
         "connected": bool(settings.instagram_access_token),
+        "link": "https://developers.facebook.com/apps/",
         "keys": [
-            ("INSTAGRAM_ACCESS_TOKEN", settings.instagram_access_token),
-            ("INSTAGRAM_BUSINESS_ACCOUNT_ID", settings.instagram_business_account_id),
+            ("INSTAGRAM_ACCESS_TOKEN", settings.instagram_access_token, "Access Token"),
+            ("INSTAGRAM_BUSINESS_ACCOUNT_ID", settings.instagram_business_account_id, "Business Account ID"),
         ],
     },
     {
         "name": "TikTok",
         "connected": bool(settings.tiktok_access_token),
+        "link": "https://developers.tiktok.com/",
         "keys": [
-            ("TIKTOK_ACCESS_TOKEN", settings.tiktok_access_token),
-            ("TIKTOK_OPEN_ID", settings.tiktok_open_id),
+            ("TIKTOK_ACCESS_TOKEN", settings.tiktok_access_token, "Access Token"),
+            ("TIKTOK_OPEN_ID", settings.tiktok_open_id, "Open ID"),
         ],
     },
     {
         "name": "Reddit",
         "connected": bool(settings.reddit_client_id),
+        "link": "https://www.reddit.com/prefs/apps",
         "keys": [
-            ("REDDIT_CLIENT_ID", settings.reddit_client_id),
-            ("REDDIT_CLIENT_SECRET", settings.reddit_client_secret),
+            ("REDDIT_CLIENT_ID", settings.reddit_client_id, "Client ID"),
+            ("REDDIT_CLIENT_SECRET", settings.reddit_client_secret, "Client Secret"),
         ],
     },
 ]
 
 for platform in platform_configs:
-    with st.expander(
-        f"{'Connected' if platform['connected'] else 'Not connected'} — {platform['name']}",
-        expanded=False,
-    ):
-        changed = False
-        for key, current_value in platform["keys"]:
+    status = "Connected" if platform["connected"] else "Not connected"
+    with st.expander(f"{platform['name']} — {status}"):
+        st.caption(f"Get credentials at {platform['link']}")
+
+        for env_key, current_value, label in platform["keys"]:
             new_value = st.text_input(
-                key,
+                label,
                 value=current_value,
-                type="password" if "SECRET" in key or "TOKEN" in key else "default",
-                key=f"platform_{key}",
+                type="password",
+                key=f"platform_{env_key}",
             )
-            if new_value != current_value and new_value:
-                save_env_var(key, new_value)
-                changed = True
+            if new_value != current_value:
+                save_env_var(env_key, new_value)
 
-        if changed:
+        if st.button(f"Save {platform['name']}", key=f"save_{platform['name']}"):
             st.success(f"{platform['name']} credentials saved!")
-            st.rerun()
-
-st.markdown("---")
-
-# ── Advanced ─────────────────────────────────────────────────────────────────
-
-with st.expander("Advanced: Use API key instead of OAuth"):
-    st.markdown("If you prefer using a static API key instead of OAuth sign-in:")
-    api_key_input = st.text_input(
-        "OpenAI API Key",
-        value=settings.openai_api_key,
-        type="password",
-        placeholder="sk-...",
-        key="openai_api_key_input",
-    )
-    if st.button("Save API Key"):
-        if api_key_input:
-            save_env_var("OPENAI_API_KEY", api_key_input.strip())
-            st.success("API key saved!")
             st.rerun()
