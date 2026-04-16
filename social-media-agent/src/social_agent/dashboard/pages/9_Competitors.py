@@ -61,7 +61,7 @@ if scan_clicked:
 
 # Analyze button
 if st.button("Analyze Strategies", disabled=not bool(settings.google_api_key)):
-    with st.spinner("Analyzing competitor strategies with Claude..."):
+    with st.spinner("Analyzing competitor strategies with Gemini..."):
         try:
             from social_agent.research.competitors import analyze_competitors
             report = analyze_competitors(profile)

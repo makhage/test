@@ -47,7 +47,7 @@ if scan_clicked:
 
 # Analyze button (works from cached viral posts, no API needed)
 if st.button("Re-analyze cached posts", disabled=not bool(settings.google_api_key)):
-    with st.spinner("Analyzing viral patterns with Claude..."):
+    with st.spinner("Analyzing viral patterns with Gemini..."):
         try:
             from social_agent.research.analyzer import analyze_viral_content
             intel = analyze_viral_content()

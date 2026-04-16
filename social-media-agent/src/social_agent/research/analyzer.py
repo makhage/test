@@ -73,13 +73,13 @@ def analyze_viral_content(limit: int = 50) -> NicheIntelligence | None:
         if not records and not reddit_records:
             return None
 
-        # Format social media posts for Claude
+        # Format social media posts for Gemini
         posts_text = "\n\n".join(
             f"[{r.platform}] Likes: {r.likes} | Shares: {r.shares} | Comments: {r.comments}\n{r.text}"
             for r in records
         ) if records else "(No social media posts scraped yet)"
 
-        # Format Reddit posts for Claude — include titles, selftext, AND top comments
+        # Format Reddit posts for Gemini — include titles, selftext, AND top comments
         reddit_parts: list[str] = []
         for r in reddit_records:
             comments = json.loads(r.top_comments) if r.top_comments else []

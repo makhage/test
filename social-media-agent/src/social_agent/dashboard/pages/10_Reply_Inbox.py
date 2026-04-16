@@ -74,7 +74,7 @@ if draft_clicked:
     if not comments:
         st.info("Fetch comments first, then click Draft Replies.")
     else:
-        with st.spinner("Generating reply drafts with Claude..."):
+        with st.spinner("Generating reply drafts with Gemini..."):
             try:
                 from social_agent.engagement.reply_manager import draft_replies
                 drafts = draft_replies(comments, profile)

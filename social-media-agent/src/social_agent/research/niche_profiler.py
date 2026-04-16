@@ -1,7 +1,7 @@
 """Niche Profiler — Analyze the creator's own content to understand their niche.
 
 Scrapes the creator's social media accounts (posts, bio, comments, video
-transcripts) and uses Claude to build a comprehensive niche profile that
+transcripts) and uses Gemini to build a comprehensive niche profile that
 drives subreddit discovery and content strategy.
 
 Supports a single Linktree URL as input — the agent extracts all platform
@@ -34,7 +34,7 @@ class NicheProfileRecord(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     raw_content = Column(Text, default="")  # All scraped content, JSON
-    niche_analysis = Column(Text, default="")  # Claude's analysis, JSON
+    niche_analysis = Column(Text, default="")  # AI analysis, JSON
     discovered_subreddits = Column(Text, default="[]")  # JSON list
     linktree_url = Column(String(500), default="")  # Source Linktree URL
     extracted_links = Column(Text, default="{}")  # JSON of extracted platform links
@@ -519,7 +519,7 @@ def transcribe_creator_videos(video_urls: list[str], max_videos: int = 5) -> lis
 
 
 # ---------------------------------------------------------------------------
-# Niche Analysis — Claude analyzes all scraped content
+# Niche Analysis — Gemini analyzes all scraped content
 # ---------------------------------------------------------------------------
 
 
@@ -570,7 +570,7 @@ def analyze_creator_niche(
     transcribe_videos: bool = True,
     max_video_transcripts: int = 5,
 ) -> dict[str, Any]:
-    """Scrape the creator's content across all platforms and use Claude to analyze their niche.
+    """Scrape the creator's content across all platforms and use Gemini to analyze their niche.
 
     The simplest way: pass a `linktree_url` and all platform links are
     extracted automatically. Or pass individual URLs directly.
@@ -707,7 +707,7 @@ def analyze_creator_niche(
                     "transcript": transcript,
                 })
 
-    # --- Format for Claude ---
+    # --- Format for Gemini ---
     content_text = ""
     for source in creator_content:
         platform = source.get("platform", "unknown")

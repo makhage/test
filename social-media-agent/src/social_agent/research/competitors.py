@@ -110,7 +110,7 @@ def analyze_competitors(profile: InfluencerProfile) -> list[CompetitorProfile]:
             avg_shares = sum(r.shares for r in records) / len(records)
             avg_comments = sum(r.comments for r in records) / len(records)
 
-            # Use Claude to extract topics from their content
+            # Use Gemini to extract topics from their content
             top_topics = _extract_topics(records)
 
             profiles.append(CompetitorProfile(

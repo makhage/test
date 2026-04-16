@@ -131,7 +131,7 @@ with tab_comments:
 
     with col_mine2:
         if st.button("Analyze & Extract Ideas", disabled=not has_api, key="analyze_comments_btn"):
-            with st.spinner("Classifying comments with Claude..."):
+            with st.spinner("Classifying comments with Gemini..."):
                 from social_agent.research.comment_miner import analyze_comments
                 result = analyze_comments()
                 if "error" not in result:

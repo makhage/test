@@ -179,7 +179,7 @@ if st.button(
         steps.append(f"scraping {', '.join(platforms_to_scrape)}")
     if transcribe:
         steps.append(f"transcribing up to {max_transcripts} videos")
-    steps.append("analyzing with Claude")
+    steps.append("analyzing with Gemini")
 
     with st.spinner(f"{'  →  '.join(steps)}..."):
         try:
