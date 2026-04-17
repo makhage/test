@@ -39,6 +39,36 @@ with st.sidebar:
         '<div class="sidebar-logo"><h1>Social Agent</h1></div>',
         unsafe_allow_html=True,
     )
+
+    # Creator selector
+    from social_agent.creators import list_creators, current_slug, set_active_slug, create_creator
+
+    creators = list_creators()
+    if creators:
+        creator_names = {c["slug"]: c["name"] for c in creators}
+        active = current_slug()
+        if active not in creator_names:
+            set_active_slug(list(creator_names.keys())[0])
+            active = current_slug()
+
+        selected = st.selectbox(
+            "Creator",
+            options=list(creator_names.keys()),
+            format_func=lambda s: creator_names.get(s, s),
+            index=list(creator_names.keys()).index(active),
+            key="sidebar_creator_select",
+        )
+        if selected != active:
+            set_active_slug(selected)
+            st.rerun()
+
+    with st.expander("Add creator", expanded=False):
+        new_name = st.text_input("Creator name", key="sidebar_new_creator_name")
+        if st.button("Add", key="sidebar_add_creator", disabled=not new_name):
+            slug = create_creator(new_name)
+            set_active_slug(slug)
+            st.rerun()
+
     st.caption("**Workflow**")
     st.caption("1 Research → 2 Insights → 3 Create → 4 Publish → 5 Measure")
 

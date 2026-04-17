@@ -791,6 +791,15 @@ def analyze_creator_niche(
         try:
             from social_agent.identity import soul_from_niche_analysis, update_soul
             from social_agent.knowledge import remember_many
+            from social_agent.creators import create_creator, set_active_slug, current_slug
+
+            # Auto-create a creator if linktree gave us a name and we're on default
+            if linktree_data and linktree_data.get("name") and current_slug() == "default":
+                slug = create_creator(
+                    name=linktree_data["name"],
+                    linktree_url=linktree_url or "",
+                )
+                set_active_slug(slug)
 
             update_soul(soul_from_niche_analysis(analysis, linktree_data))
 

@@ -1,30 +1,34 @@
-"""Load the agent's identity files (agent.md, skills.md, soul.md).
+"""Load the agent's identity files for the current creator.
 
-These are prepended to every Gemini system prompt so the model knows
-who it is, what it can do, and whose voice it speaks in.
+Each creator has their own agent.md, skills.md, soul.md under
+`creators/<slug>/` (or `creator/` for the default creator).
+These are prepended to every Gemini system prompt.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from social_agent.config import PROJECT_ROOT
-
-CREATOR_DIR = PROJECT_ROOT / "creator"
+from social_agent.creators import creator_dir
 
 
-def _read(name: str) -> str:
-    path = CREATOR_DIR / name
+def _read(name: str, slug: str | None = None) -> str:
+    path = creator_dir(slug) / name
     if not path.exists():
+        # Fallback to main creator/ directory for shared files (agent.md, skills.md)
+        from social_agent.config import PROJECT_ROOT
+        fallback = PROJECT_ROOT / "creator" / name
+        if fallback.exists():
+            return fallback.read_text()
         return ""
     return path.read_text()
 
 
-def load_identity() -> str:
+def load_identity(slug: str | None = None) -> str:
     """Return the combined identity block to prepend to system prompts."""
-    agent = _read("agent.md")
-    skills = _read("skills.md")
-    soul = _read("soul.md")
+    agent = _read("agent.md", slug)
+    skills = _read("skills.md", slug)
+    soul = _read("soul.md", slug)
 
     parts = []
     if agent:
@@ -36,10 +40,11 @@ def load_identity() -> str:
     return "\n\n---\n\n".join(parts)
 
 
-def update_soul(content: str) -> None:
-    """Overwrite soul.md with new content (called after Niche Scanner runs)."""
-    CREATOR_DIR.mkdir(parents=True, exist_ok=True)
-    (CREATOR_DIR / "soul.md").write_text(content)
+def update_soul(content: str, slug: str | None = None) -> None:
+    """Overwrite the creator's soul.md with new content."""
+    d = creator_dir(slug)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "soul.md").write_text(content)
 
 
 def soul_from_niche_analysis(analysis: dict, linktree_data: dict | None = None) -> str:

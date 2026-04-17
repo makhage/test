@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Iterable
 
+from social_agent.creators import current_slug
 from social_agent.db.database import KnowledgeEntry, get_session, init_db
 
 
@@ -45,6 +46,7 @@ def remember(
     session = get_session()
     try:
         entry = KnowledgeEntry(
+            creator_slug=current_slug(),
             category=category,
             content=content,
             source=source,
@@ -59,10 +61,12 @@ def remember(
 def remember_many(entries: Iterable[tuple[str, str, str, float]]) -> None:
     """Batch insert. Each tuple is (category, content, source, relevance)."""
     init_db()
+    slug = current_slug()
     session = get_session()
     try:
         for category, content, source, relevance in entries:
             session.add(KnowledgeEntry(
+                creator_slug=slug,
                 category=category,
                 content=content,
                 source=source,
@@ -97,7 +101,8 @@ def recall(
     try:
         cutoff = datetime.utcnow() - timedelta(days=days)
         query = session.query(KnowledgeEntry).filter(
-            KnowledgeEntry.created_at >= cutoff
+            KnowledgeEntry.created_at >= cutoff,
+            KnowledgeEntry.creator_slug == current_slug(),
         )
         if categories:
             query = query.filter(KnowledgeEntry.category.in_(categories))
@@ -177,14 +182,17 @@ def build_context_block(max_chars: int = 3000) -> str:
 
 
 def stats() -> dict:
-    """Summary stats for the dashboard."""
+    """Summary stats for the dashboard (current creator only)."""
     init_db()
+    slug = current_slug()
     session = get_session()
     try:
-        total = session.query(KnowledgeEntry).count()
+        total = session.query(KnowledgeEntry).filter_by(creator_slug=slug).count()
         by_category = {}
         for cat in CATEGORIES:
-            by_category[cat] = session.query(KnowledgeEntry).filter_by(category=cat).count()
+            by_category[cat] = session.query(KnowledgeEntry).filter_by(
+                creator_slug=slug, category=cat
+            ).count()
         return {"total": total, "by_category": by_category}
     finally:
         session.close()
