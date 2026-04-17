@@ -23,7 +23,6 @@ def render() -> None:
 
     profile = load_profile()
     settings = get_settings()
-    has_reddit = bool(settings.reddit_client_id and settings.reddit_client_secret)
 
     # --- Subreddit source: auto-discovered vs manual ---
     from social_agent.research.niche_profiler import get_discovered_subreddits
@@ -66,13 +65,7 @@ def render() -> None:
         )
 
     if scan_clicked:
-        if not has_reddit:
-            st.error(
-                "Reddit credentials aren't configured yet. Add `REDDIT_CLIENT_ID` and "
-                "`REDDIT_CLIENT_SECRET` in **Settings** (or your `.env` file) — "
-                "they're free to create at https://www.reddit.com/prefs/apps."
-            )
-        elif not active_subs:
+        if not active_subs:
             st.warning("No subreddits to scan. Run Niche Profile first to auto-discover them.")
         else:
             with st.spinner(f"Scanning {len(active_subs)} subreddits..."):

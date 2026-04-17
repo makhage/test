@@ -1,29 +1,42 @@
-"""Reddit scraper — mines subreddits for trending discussions, hot takes, and audience questions."""
+"""Reddit scraper — mines subreddits for trending discussions, hot takes, and audience questions.
+
+Works WITHOUT API keys by using Reddit's public .json endpoints.
+Falls back to PRAW if credentials are configured (higher rate limits).
+"""
 
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime
 from typing import Optional
 
-import praw
+import requests
 
 from social_agent.config import get_settings
 from social_agent.db.database import RedditPostRecord, get_session, init_db
 from social_agent.models.content import InfluencerProfile
 
 
-def _get_reddit_client() -> Optional[praw.Reddit]:
-    """Create an authenticated Reddit client."""
+_HEADERS = {
+    "User-Agent": "SocialAgent/1.0 (content research bot; +https://github.com)",
+}
+
+
+def _get_reddit_client():
+    """Create an authenticated Reddit client if credentials exist."""
     settings = get_settings()
     if not settings.reddit_client_id or not settings.reddit_client_secret:
         return None
-
-    return praw.Reddit(
-        client_id=settings.reddit_client_id,
-        client_secret=settings.reddit_client_secret,
-        user_agent=settings.reddit_user_agent,
-    )
+    try:
+        import praw
+        return praw.Reddit(
+            client_id=settings.reddit_client_id,
+            client_secret=settings.reddit_client_secret,
+            user_agent=settings.reddit_user_agent,
+        )
+    except Exception:
+        return None
 
 
 def _classify_post(title: str, selftext: str, flair: str) -> str:
@@ -50,7 +63,7 @@ def _classify_post(title: str, selftext: str, flair: str) -> str:
     return "discussion"
 
 
-def scrape_subreddit(
+def _scrape_subreddit_web(
     subreddit_name: str,
     sort: str = "hot",
     limit: int = 25,
@@ -58,19 +71,87 @@ def scrape_subreddit(
     include_comments: bool = True,
     max_comment_depth: int = 3,
 ) -> list[dict]:
-    """Scrape top/hot posts from a subreddit with their best comments.
+    """Scrape via Reddit's public .json endpoints — NO API keys needed."""
+    sub = subreddit_name.strip().lstrip("r/").lstrip("/")
+    sort_path = sort if sort in ("hot", "top", "rising", "new") else "hot"
+    url = f"https://www.reddit.com/r/{sub}/{sort_path}.json"
+    params: dict = {"limit": min(limit, 100), "raw_json": 1}
+    if sort == "top":
+        params["t"] = "week"
 
-    Args:
-        subreddit_name: Name of the subreddit (without r/).
-        sort: How to sort posts — "hot", "top", "rising", "new".
-        limit: Max posts to fetch.
-        min_upvotes: Minimum upvotes to include a post.
-        include_comments: Whether to fetch top comments.
-        max_comment_depth: How many top-level comments to grab.
+    results: list[dict] = []
+    try:
+        resp = requests.get(url, headers=_HEADERS, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception:
+        return []
 
-    Returns:
-        List of post dicts with title, text, comments, engagement metrics.
-    """
+    children = data.get("data", {}).get("children", [])
+    for child in children:
+        post = child.get("data", {})
+        if not post:
+            continue
+        if post.get("stickied"):
+            continue
+        score = post.get("ups", 0)
+        if score < min_upvotes:
+            continue
+
+        permalink = post.get("permalink", "")
+
+        # Fetch top comments from individual post
+        top_comments: list[str] = []
+        if include_comments and permalink:
+            try:
+                time.sleep(0.6)  # respect rate limit
+                c_resp = requests.get(
+                    f"https://www.reddit.com{permalink}.json",
+                    headers=_HEADERS,
+                    params={"limit": max_comment_depth, "sort": "best", "raw_json": 1},
+                    timeout=10,
+                )
+                if c_resp.ok:
+                    c_data = c_resp.json()
+                    if isinstance(c_data, list) and len(c_data) > 1:
+                        for cchild in c_data[1].get("data", {}).get("children", [])[:max_comment_depth]:
+                            body = cchild.get("data", {}).get("body", "")
+                            if len(body) > 20:
+                                top_comments.append(body[:500])
+            except Exception:
+                pass
+
+        title = post.get("title", "")
+        selftext = (post.get("selftext") or "")[:2000]
+        flair = post.get("link_flair_text") or ""
+
+        results.append({
+            "subreddit": sub,
+            "title": title,
+            "selftext": selftext,
+            "author": post.get("author", "[deleted]"),
+            "upvotes": score,
+            "num_comments": post.get("num_comments", 0),
+            "upvote_ratio": post.get("upvote_ratio", 0),
+            "url": post.get("url", ""),
+            "permalink": f"https://reddit.com{permalink}" if permalink else "",
+            "top_comments": top_comments,
+            "flair": flair,
+            "content_type": _classify_post(title, selftext, flair),
+        })
+
+    return results
+
+
+def _scrape_subreddit_praw(
+    subreddit_name: str,
+    sort: str = "hot",
+    limit: int = 25,
+    min_upvotes: int = 100,
+    include_comments: bool = True,
+    max_comment_depth: int = 3,
+) -> list[dict]:
+    """Scrape via PRAW (requires API credentials)."""
     reddit = _get_reddit_client()
     if not reddit:
         return []
@@ -94,7 +175,6 @@ def scrape_subreddit(
             if post.stickied:
                 continue
 
-            # Get top comments
             top_comments: list[str] = []
             if include_comments:
                 post.comment_sort = "best"
@@ -121,6 +201,34 @@ def scrape_subreddit(
         return results
     except Exception:
         return []
+
+
+def scrape_subreddit(
+    subreddit_name: str,
+    sort: str = "hot",
+    limit: int = 25,
+    min_upvotes: int = 100,
+    include_comments: bool = True,
+    max_comment_depth: int = 3,
+) -> list[dict]:
+    """Scrape top/hot posts from a subreddit with their best comments.
+
+    Uses PRAW if credentials are set (higher rate limits), otherwise
+    falls back to Reddit's public .json endpoints — no API key needed.
+    """
+    settings = get_settings()
+    has_creds = bool(settings.reddit_client_id and settings.reddit_client_secret)
+
+    if has_creds:
+        results = _scrape_subreddit_praw(
+            subreddit_name, sort, limit, min_upvotes, include_comments, max_comment_depth,
+        )
+        if results:
+            return results
+
+    return _scrape_subreddit_web(
+        subreddit_name, sort, limit, min_upvotes, include_comments, max_comment_depth,
+    )
 
 
 def scrape_all_subreddits(
