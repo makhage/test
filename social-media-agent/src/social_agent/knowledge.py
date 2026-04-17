@@ -73,15 +73,24 @@ def remember_many(entries: Iterable[tuple[str, str, str, float]]) -> None:
         session.close()
 
 
+def _decayed_score(relevance: float, created_at: datetime, half_life_days: int = 14) -> float:
+    """Apply time decay to relevance. Entries lose half their weight every half_life_days."""
+    age_days = (datetime.utcnow() - created_at).total_seconds() / 86400
+    decay = 0.5 ** (age_days / half_life_days)
+    return relevance * decay
+
+
 def recall(
     categories: list[str] | None = None,
-    days: int = 30,
+    days: int = 90,
     limit: int = 20,
+    half_life_days: int = 14,
 ) -> list[dict]:
-    """Get the most recent, relevant knowledge entries.
+    """Get knowledge entries sorted by decayed relevance (fresh + relevant first).
 
-    Returns list of dicts with keys: category, content, source, created_at.
-    Sorted by relevance desc, then recency desc.
+    Entries fade over time — something from 14 days ago has half the weight of
+    today. Keeps the context fed to Gemini fresh and stops stale trends from
+    dominating.
     """
     init_db()
     session = get_session()
@@ -93,17 +102,35 @@ def recall(
         if categories:
             query = query.filter(KnowledgeEntry.category.in_(categories))
 
-        entries = query.order_by(
-            KnowledgeEntry.relevance.desc(),
-            KnowledgeEntry.created_at.desc(),
-        ).limit(limit).all()
+        # Pull more than we need, rank in Python with decay, then trim
+        candidates = query.limit(limit * 4).all()
+        scored = sorted(
+            candidates,
+            key=lambda e: _decayed_score(e.relevance, e.created_at, half_life_days),
+            reverse=True,
+        )[:limit]
 
         return [{
             "category": e.category,
             "content": e.content,
             "source": e.source,
             "created_at": e.created_at.isoformat(),
-        } for e in entries]
+        } for e in scored]
+    finally:
+        session.close()
+
+
+def prune_old_entries(keep_days: int = 90) -> int:
+    """Delete knowledge entries older than keep_days. Returns count deleted."""
+    init_db()
+    session = get_session()
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=keep_days)
+        count = session.query(KnowledgeEntry).filter(
+            KnowledgeEntry.created_at < cutoff
+        ).delete()
+        session.commit()
+        return count
     finally:
         session.close()
 

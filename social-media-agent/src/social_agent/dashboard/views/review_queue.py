@@ -33,7 +33,25 @@ def _render_content_preview(post: ScheduledPostRecord) -> str:
         return post.content_json[:300]
 
 
-def _render_post_card(post: ScheduledPostRecord, actions: bool = True) -> None:
+def _render_carousel_images(post: ScheduledPostRecord, profile) -> None:
+    """Render the carousel as actual slide images."""
+    try:
+        data = json.loads(post.content_json)
+        from social_agent.models.content import Carousel
+        carousel = Carousel(**data)
+
+        from social_agent.renderers.carousel_renderer import render_carousel
+        images = render_carousel(carousel, profile.brand)
+        if images:
+            cols = st.columns(min(len(images), 4))
+            for i, img_path in enumerate(images):
+                with cols[i % len(cols)]:
+                    st.image(str(img_path), caption=f"Slide {i + 1}", use_container_width=True)
+    except Exception as e:
+        st.caption(f"Could not render carousel images: {e}")
+
+
+def _render_post_card(post: ScheduledPostRecord, profile, actions: bool = True) -> None:
     """Render one post with its source signal and actions."""
     preview = _render_content_preview(post)
 
@@ -64,20 +82,73 @@ def _render_post_card(post: ScheduledPostRecord, actions: bool = True) -> None:
             )
             st.markdown(preview)
 
+            # Render carousel as actual images
+            if post.content_type == "carousel":
+                with st.expander("Show rendered slides", expanded=False):
+                    _render_carousel_images(post, profile)
+
         if actions:
             with col_actions:
                 if st.button("Approve", key=f"approve_{post.id}", type="primary", use_container_width=True):
                     post.status = "approved"
                     return "commit"
                 if st.button("Reject", key=f"reject_{post.id}", use_container_width=True):
+                    st.session_state[f"rejecting_{post.id}"] = True
+
+        # Rejection reason capture — teaches the agent
+        if st.session_state.get(f"rejecting_{post.id}"):
+            st.markdown(
+                '<div style="background:#EF444410;border-left:3px solid #EF4444;'
+                'padding:0.75rem;border-radius:4px;margin-top:0.5rem;">'
+                '<p style="margin:0;color:#EF4444;font-weight:600;font-size:0.85rem;">'
+                'Why are you rejecting this?</p>'
+                '<p style="margin:0.25rem 0 0 0;color:#CBD5E1;font-size:0.8rem;">'
+                'Your answer gets saved to the knowledge base so the agent stops generating similar misses.</p>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            reason = st.text_area(
+                "Reason",
+                key=f"reason_{post.id}",
+                placeholder="e.g. 'Too preachy', 'Wrong tone', 'I'd never say this'",
+                label_visibility="collapsed",
+            )
+            col_save, col_cancel = st.columns([1, 1])
+            with col_save:
+                if st.button("Reject + teach agent", key=f"reject_confirm_{post.id}", type="primary"):
                     post.status = "rejected"
+                    # Write rejection as negative knowledge
+                    try:
+                        from social_agent.knowledge import remember
+                        topic_preview = preview[:100].replace("\n", " ")
+                        feedback = (
+                            f"Avoid content like this: '{topic_preview}'. "
+                            f"Reason: {reason.strip() or 'user rejected without comment'}"
+                        )
+                        remember(
+                            "performance",
+                            feedback,
+                            source=f"rejection_feedback (post #{post.id})",
+                            relevance=1.0,
+                        )
+                    except Exception:
+                        pass
+                    st.session_state[f"rejecting_{post.id}"] = False
                     return "commit"
+            with col_cancel:
+                if st.button("Cancel", key=f"reject_cancel_{post.id}"):
+                    st.session_state[f"rejecting_{post.id}"] = False
+                    st.rerun()
+
         st.markdown("---")
     return None
 
 
 def render() -> None:
     init_db()
+
+    from social_agent.profiles.loader import load_profile
+    profile = load_profile()
 
     st.markdown("# Approval Queue")
     st.caption("Every draft shows the signal that triggered it so you can tell if the agent's listening to your audience.")
@@ -94,7 +165,7 @@ def render() -> None:
                 st.info("No pending posts. Open Create → generate content from suggested ideas.")
             else:
                 for post in pending:
-                    result = _render_post_card(post, actions=True)
+                    result = _render_post_card(post, profile, actions=True)
                     if result == "commit":
                         session.commit()
                         st.rerun()
@@ -107,7 +178,7 @@ def render() -> None:
                 st.info("No approved posts yet.")
             else:
                 for post in approved:
-                    _render_post_card(post, actions=False)
+                    _render_post_card(post, profile, actions=False)
 
         with tab3:
             published = session.query(ScheduledPostRecord).filter_by(status="published").order_by(
@@ -117,7 +188,7 @@ def render() -> None:
                 st.info("No published posts yet.")
             else:
                 for post in published:
-                    _render_post_card(post, actions=False)
+                    _render_post_card(post, profile, actions=False)
 
         with tab4:
             rejected = session.query(ScheduledPostRecord).filter_by(status="rejected").order_by(
@@ -127,7 +198,7 @@ def render() -> None:
                 st.info("No rejected posts.")
             else:
                 for post in rejected:
-                    _render_post_card(post, actions=False)
+                    _render_post_card(post, profile, actions=False)
     finally:
         session.close()
 

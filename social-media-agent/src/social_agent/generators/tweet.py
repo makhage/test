@@ -84,8 +84,18 @@ def generate_tweet(
     if not data or "text" not in data:
         data = {"text": raw.strip()[:280], "hashtags": []}
 
+    text = data.get("text", "")[:280]
+
+    # Voice guardrail — auto-rewrite if below threshold
+    try:
+        from social_agent.generators.voice_scorer import score_and_rewrite
+        text, _ = score_and_rewrite(text, profile)
+        text = text[:280]
+    except Exception:
+        pass
+
     return Tweet(
-        text=data.get("text", "")[:280],
+        text=text,
         hashtags=data.get("hashtags", []),
     )
 
