@@ -20,10 +20,57 @@ def render() -> None:
     init_db()
 
     st.markdown("# Content Calendar")
-    st.markdown("Visual overview of your content schedule.")
+    st.caption("Visual overview of your scheduled content. Auto-fill pulls from your knowledge base.")
 
     profile = load_profile()
     settings = get_settings()
+
+    # ── Auto-plan a week ─────────────────────────────────────────────────────
+    if settings.google_api_key:
+        col_a, col_b = st.columns([3, 1])
+        with col_a:
+            st.markdown(
+                "**Auto-plan** — fill next 7 days with content ideas from your audience research."
+            )
+        with col_b:
+            if st.button("Auto-plan week", type="primary", use_container_width=True):
+                with st.spinner("Planning content based on your knowledge base..."):
+                    try:
+                        from social_agent.calendar.planner import generate_calendar
+                        schedule = generate_calendar(profile, days=7)
+
+                        init_db()
+                        sess = get_session()
+                        try:
+                            from social_agent.db.database import ScheduledPostRecord as SPR
+                            for entry in schedule[:14]:
+                                try:
+                                    sched = datetime.fromisoformat(
+                                        f"{entry.get('date', '')}T{entry.get('time', '10:00')}:00"
+                                    )
+                                except Exception:
+                                    sched = datetime.utcnow() + timedelta(days=1)
+                                sess.add(SPR(
+                                    content_type=entry.get("content_type", "tweet"),
+                                    content_json=json.dumps({
+                                        "topic": entry.get("topic", ""),
+                                        "hook_suggestion": entry.get("hook_suggestion", ""),
+                                        "notes": entry.get("notes", ""),
+                                    }),
+                                    platform=entry.get("platform", "twitter"),
+                                    scheduled_time=sched,
+                                    status="draft",
+                                    source_signal="Auto-planned from knowledge base",
+                                    source_angle=entry.get("hook_suggestion", ""),
+                                ))
+                            sess.commit()
+                            st.success(f"Added {len(schedule[:14])} draft posts to the calendar.")
+                        finally:
+                            sess.close()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Plan failed: {e}")
+        st.markdown("---")
 
     # Load scheduled posts
     session = get_session()

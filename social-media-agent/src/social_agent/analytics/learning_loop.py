@@ -120,6 +120,21 @@ def analyze_performance(days: int = 30) -> dict[str, Any]:
             user=LEARNING_PROMPT.format(post_data=post_text),
             max_tokens=3000,
         )
+        if result:
+            # Feed learnings back into knowledge base
+            try:
+                from social_agent.knowledge import remember_many
+                entries = []
+                for hook in result.get("best_hooks", [])[:5]:
+                    entries.append(("winning_hook", f"Your high-performing hook: {hook}", "learning_loop", 0.95))
+                for topic in result.get("best_topics", [])[:5]:
+                    entries.append(("performance", f"Topic that worked: {topic}", "learning_loop", 0.9))
+                for rec in result.get("recommendations", [])[:5]:
+                    entries.append(("performance", rec, "learning_loop", 0.85))
+                if entries:
+                    remember_many(entries)
+            except Exception:
+                pass
         return result or {"error": "Failed to parse response"}
     except Exception as e:
         return {"error": str(e)}

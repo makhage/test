@@ -138,7 +138,29 @@ def build_audience_personas(
                 ),
                 max_tokens=4000,
             )
-            return result if result else {"error": "Failed to parse personas"}
+            if result:
+                # Store key persona insights into knowledge base
+                try:
+                    from social_agent.knowledge import remember_many
+                    entries = []
+                    for persona in result.get("personas", [])[:3]:
+                        name = persona.get("name", "Persona")
+                        pains = persona.get("pain_points", [])[:3]
+                        for pain in pains:
+                            entries.append((
+                                "content_gap",
+                                f"{name} struggles with: {pain}",
+                                "audience_personas",
+                                0.85,
+                            ))
+                        for q in persona.get("questions", [])[:3]:
+                            entries.append(("audience_question", f"{name} asks: {q}", "audience_personas", 0.8))
+                    if entries:
+                        remember_many(entries)
+                except Exception:
+                    pass
+                return result
+            return {"error": "Failed to parse personas"}
         except Exception as e:
             return {"error": str(e)}
     finally:

@@ -19,10 +19,54 @@ def render() -> None:
     init_db()
 
     st.markdown("# A/B Lab")
-    st.markdown("Generate content variants, compare side-by-side, and track what performs best.")
+    st.caption(
+        "Test multiple hooks for the same content. Winning variants get remembered in the "
+        "knowledge base so future content uses what works."
+    )
 
     profile = load_profile()
     settings = get_settings()
+
+    # --- Suggested tests from winning hooks + audience questions ---
+    if settings.google_api_key:
+        from social_agent.knowledge import recall
+        winning_hooks = recall(categories=["winning_hook"], limit=3)
+        top_questions = recall(categories=["audience_question"], limit=3)
+
+        if winning_hooks or top_questions:
+            st.markdown("### Test ideas from your knowledge base")
+            st.caption("Hooks that are working + questions your audience asks — perfect for A/B testing.")
+
+            suggestions = []
+            for h in winning_hooks[:2]:
+                suggestions.append({
+                    "topic": h["content"][:80],
+                    "reason": "Winning hook pattern — test variants of this",
+                    "source": h["source"],
+                })
+            for q in top_questions[:2]:
+                suggestions.append({
+                    "topic": q["content"][:80],
+                    "reason": "Top audience question — test different angles",
+                    "source": q["source"],
+                })
+
+            for idx, s in enumerate(suggestions[:4]):
+                col_info, col_act = st.columns([4, 1])
+                with col_info:
+                    st.markdown(
+                        f'<div class="card" style="margin:0;">'
+                        f'<p style="font-weight:600;margin:0 0 0.25rem 0;">{s["topic"]}</p>'
+                        f'<p style="color:#94A3B8;margin:0;font-size:0.85rem;">{s["reason"]} · {s["source"]}</p>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                with col_act:
+                    if st.button("Use this", key=f"ab_sug_{idx}", use_container_width=True):
+                        st.session_state["ab_topic"] = s["topic"]
+                        st.rerun()
+
+            st.markdown("---")
 
     # --- Generate Variants ---
     st.markdown("### Generate Variants")

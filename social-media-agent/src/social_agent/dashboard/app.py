@@ -168,6 +168,43 @@ for i, (label, done, page) in enumerate(steps):
 
 st.markdown("---")
 
+# ── Knowledge base preview ──────────────────────────────────────────────────
+
+from social_agent.knowledge import recall, stats as knowledge_stats
+
+kb = knowledge_stats()
+if kb["total"] > 0:
+    st.markdown("### What the agent knows")
+    st.caption(
+        f"{kb['total']} insights indexed across {sum(1 for v in kb['by_category'].values() if v > 0)} "
+        f"categories. Every Gemini call automatically pulls the most relevant ones."
+    )
+
+    col_q, col_g = st.columns(2)
+    with col_q:
+        st.markdown("**Audience is asking**")
+        questions = recall(categories=["audience_question"], limit=3)
+        if questions:
+            for q in questions:
+                st.markdown(f"- {q['content'][:80]}{'...' if len(q['content']) > 80 else ''}  \n"
+                            f"<span style='color:#64748B;font-size:0.75rem;'>{q['source']}</span>",
+                            unsafe_allow_html=True)
+        else:
+            st.caption("Run Reddit Intel to populate.")
+
+    with col_g:
+        st.markdown("**Content gaps spotted**")
+        gaps = recall(categories=["content_gap"], limit=3)
+        if gaps:
+            for g in gaps:
+                st.markdown(f"- {g['content'][:80]}{'...' if len(g['content']) > 80 else ''}  \n"
+                            f"<span style='color:#64748B;font-size:0.75rem;'>{g['source']}</span>",
+                            unsafe_allow_html=True)
+        else:
+            st.caption("Run gap analysis in Insights.")
+
+    st.markdown("---")
+
 # ── Current stats ───────────────────────────────────────────────────────────
 
 st.markdown("### At a Glance")

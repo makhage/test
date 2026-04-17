@@ -51,6 +51,9 @@ class ScheduledPostRecord(Base):
     status = Column(String(20), default="draft")
     created_at = Column(DateTime, default=datetime.utcnow)
     published_at = Column(DateTime, nullable=True)
+    # Provenance — why this post exists (which signal triggered it)
+    source_signal = Column(Text, default="")  # e.g. "r/learnpython asks this 8 times"
+    source_angle = Column(Text, default="")  # The content angle/hook reason
 
 
 class AnalyticsRecord(Base):

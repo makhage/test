@@ -122,6 +122,21 @@ def analyze_content_gaps(limit: int = 50) -> dict[str, Any]:
             ),
             max_tokens=3000,
         )
-        return result if result else {"error": "Failed to parse gap analysis"}
+        if result:
+            # Write gaps to knowledge base
+            try:
+                from social_agent.knowledge import remember_many
+                entries = []
+                for gap in result.get("gaps", [])[:8]:
+                    demand = gap.get("demand_strength", "medium")
+                    relevance = {"high": 1.0, "medium": 0.7, "low": 0.4}.get(demand, 0.6)
+                    content = f"{gap.get('topic', '')}: {gap.get('opportunity', '')}"
+                    entries.append(("content_gap", content, "gap_analysis", relevance))
+                if entries:
+                    remember_many(entries)
+            except Exception:
+                pass
+            return result
+        return {"error": "Failed to parse gap analysis"}
     finally:
         session.close()

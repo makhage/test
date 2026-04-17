@@ -122,6 +122,23 @@ def analyze_competitors(profile: InfluencerProfile) -> list[CompetitorProfile]:
                 top_topics=top_topics,
             ))
 
+            # Write competitor patterns to knowledge base
+            try:
+                from social_agent.knowledge import remember_many
+                entries = []
+                for topic in top_topics[:5]:
+                    relevance = min(1.0, avg_likes / 1000)
+                    entries.append((
+                        "competitor_pattern",
+                        f"@{handle_clean} posts about: {topic} (avg {avg_likes:.0f} likes)",
+                        f"@{handle_clean}",
+                        relevance,
+                    ))
+                if entries:
+                    remember_many(entries)
+            except Exception:
+                pass
+
         return profiles
     finally:
         session.close()

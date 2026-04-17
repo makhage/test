@@ -116,6 +116,19 @@ def detect_emerging_topics(
             max_tokens=2000,
         )
         if result:
+            # Write trends to knowledge base so other tools see them
+            try:
+                from social_agent.knowledge import remember_many
+                entries = []
+                for t in result.get("emerging_topics", [])[:10]:
+                    urgency = t.get("urgency", "medium")
+                    relevance = {"high": 1.0, "medium": 0.7, "low": 0.4}.get(urgency, 0.6)
+                    content = f"{t.get('topic', '')}: {t.get('what', '')} — angle: {t.get('content_angle', '')}"
+                    entries.append(("trend", content, "trend_velocity", relevance))
+                if entries:
+                    remember_many(entries)
+            except Exception:
+                pass
             return result
     except Exception:
         pass

@@ -135,6 +135,26 @@ def analyze_viral_content(limit: int = 50) -> NicheIntelligence | None:
         session.add(record)
         session.commit()
 
+        # Write pattern findings to knowledge base
+        try:
+            from social_agent.knowledge import remember_many
+            entries = []
+            for hook in intelligence.winning_hooks[:8]:
+                entries.append((
+                    "winning_hook",
+                    f"Pattern '{hook.pattern}' — example: {hook.example[:120]}",
+                    "analyzer",
+                    min(1.0, hook.frequency / 10),
+                ))
+            for topic in intelligence.trending_topics[:8]:
+                entries.append(("trend", topic, "analyzer", 0.7))
+            for phrase in intelligence.authentic_phrases[:10]:
+                entries.append(("authentic_phrase", phrase, "analyzer", 0.6))
+            if entries:
+                remember_many(entries)
+        except Exception:
+            pass
+
         return intelligence
     finally:
         session.close()

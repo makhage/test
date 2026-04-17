@@ -199,7 +199,7 @@ def render() -> None:
                 if "error" in analysis:
                     st.error(f"Analysis failed: {analysis['error']}")
                 else:
-                    st.success("Niche analysis complete!")
+                    st.success("Niche analysis complete! Updated creator/soul.md and added insights to the knowledge base.")
                     st.rerun()
             except Exception as e:
                 st.error(f"Analysis failed: {e}")

@@ -23,7 +23,13 @@ FORMAT_LABELS = {
 }
 
 
-def _save_draft(content_type: str, content_dict: dict, platform: str) -> int:
+def _save_draft(
+    content_type: str,
+    content_dict: dict,
+    platform: str,
+    source_signal: str = "",
+    source_angle: str = "",
+) -> int:
     """Save generated content to the review queue."""
     init_db()
     session = get_session()
@@ -33,6 +39,8 @@ def _save_draft(content_type: str, content_dict: dict, platform: str) -> int:
             content_json=json.dumps(content_dict),
             platform=platform,
             status="pending",
+            source_signal=source_signal,
+            source_angle=source_angle,
         )
         session.add(record)
         session.commit()
@@ -41,10 +49,23 @@ def _save_draft(content_type: str, content_dict: dict, platform: str) -> int:
         session.close()
 
 
-def _generate_and_show(format_type: str, topic: str, style: str, profile, intel) -> None:
+def _generate_and_show(
+    format_type: str,
+    topic: str,
+    style: str,
+    profile,
+    intel,
+    source_signal: str = "",
+    source_angle: str = "",
+) -> None:
     """Generate content of the right format and display it."""
     from social_agent.research.analyzer import get_latest_intelligence
     intel = intel or get_latest_intelligence()
+
+    def save_btn(ct, dump, plat, key_prefix):
+        if st.button("Save to Review Queue", key=f"{key_prefix}_{topic[:20]}"):
+            _save_draft(ct, dump, plat, source_signal, source_angle)
+            st.success("Saved to Review Queue")
 
     if format_type == "tweet":
         from social_agent.generators.tweet import generate_tweet
@@ -55,9 +76,7 @@ def _generate_and_show(format_type: str, topic: str, style: str, profile, intel)
             f'<p style="color:#64748B;font-size:0.75rem;">{len(result.text)}/280</p></div>',
             unsafe_allow_html=True,
         )
-        if st.button("Save to Review Queue", key=f"save_tweet_{topic[:20]}"):
-            _save_draft("tweet", result.model_dump(), "twitter")
-            st.success("Saved to Review Queue")
+        save_btn("tweet", result.model_dump(), "twitter", "save_tweet")
 
     elif format_type == "thread":
         from social_agent.generators.tweet import generate_thread
@@ -70,9 +89,7 @@ def _generate_and_show(format_type: str, topic: str, style: str, profile, intel)
                 f'<p style="color:#94A3B8;font-size:0.8rem;">Tweet {j + 1}</p><p>{t}</p></div>',
                 unsafe_allow_html=True,
             )
-        if st.button("Save to Review Queue", key=f"save_thread_{topic[:20]}"):
-            _save_draft("thread", result.model_dump(), "twitter")
-            st.success("Saved to Review Queue")
+        save_btn("thread", result.model_dump(), "twitter", "save_thread")
 
     elif format_type == "carousel":
         from social_agent.generators.carousel import generate_carousel
@@ -87,9 +104,7 @@ def _generate_and_show(format_type: str, topic: str, style: str, profile, intel)
             )
         if result.caption:
             st.caption(result.caption)
-        if st.button("Save to Review Queue", key=f"save_car_{topic[:20]}"):
-            _save_draft("carousel", result.model_dump(), "instagram")
-            st.success("Saved to Review Queue")
+        save_btn("carousel", result.model_dump(), "instagram", "save_car")
 
     elif format_type == "tiktok":
         from social_agent.generators.tiktok import generate_tiktok_caption
@@ -101,9 +116,7 @@ def _generate_and_show(format_type: str, topic: str, style: str, profile, intel)
             st.caption(f"Suggested sound: {result.sound_suggestion}")
         if result.script_notes:
             st.markdown(f"**Script notes:** {result.script_notes}")
-        if st.button("Save to Review Queue", key=f"save_tt_{topic[:20]}"):
-            _save_draft("tiktok", result.model_dump(), "tiktok")
-            st.success("Saved to Review Queue")
+        save_btn("tiktok", result.model_dump(), "tiktok", "save_tt")
 
 
 def render() -> None:
@@ -177,6 +190,8 @@ def render() -> None:
                         style=idea.get("style", "engaging"),
                         profile=profile,
                         intel=None,
+                        source_signal=idea.get("source", ""),
+                        source_angle=idea.get("angle", ""),
                     )
 
     st.markdown("---")

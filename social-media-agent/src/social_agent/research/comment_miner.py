@@ -184,13 +184,32 @@ def analyze_comments(limit: int = 100) -> dict[str, Any]:
             return {"error": "Failed to parse"}
 
         # Update DB records with classifications
+        kb_entries = []
         for item in data.get("classified", []):
             idx = item.get("index", -1)
             if 0 <= idx < len(records):
                 records[idx].category = item.get("category", "other")
                 records[idx].extracted_topic = item.get("extracted_topic", "")
-                records[idx].priority = item.get("priority", 0.0)
+                priority = item.get("priority", 0.0)
+                records[idx].priority = priority
+                # Index meaningful comments into knowledge base
+                category = item.get("category", "other")
+                topic = item.get("extracted_topic", "")
+                if category in ("request", "question") and topic:
+                    kb_entries.append((
+                        "audience_question",
+                        f"{topic} (from your own comments, priority {priority:.1f})",
+                        f"your {records[idx].platform} comments",
+                        min(1.0, priority),
+                    ))
         session.commit()
+
+        if kb_entries:
+            try:
+                from social_agent.knowledge import remember_many
+                remember_many(kb_entries)
+            except Exception:
+                pass
 
         return data
     finally:
