@@ -17,12 +17,27 @@ from social_agent.db.database import init_db
 
 def render() -> None:
     st.markdown("# Analytics")
-    st.markdown("Track performance and understand what's working.")
+    st.caption("Track performance. The agent learns from high-performers automatically.")
 
     init_db()
 
-    # Time period selector
-    period = st.selectbox("Time Period", ["7 days", "14 days", "30 days", "90 days"])
+    # Refresh from platforms
+    col_period, col_refresh = st.columns([3, 1])
+    with col_period:
+        period = st.selectbox("Time Period", ["7 days", "14 days", "30 days", "90 days"])
+    with col_refresh:
+        st.markdown('<div style="height:1.8rem;"></div>', unsafe_allow_html=True)
+        if st.button("Pull fresh data", use_container_width=True):
+            from social_agent.analytics.poller import poll_all
+            with st.spinner("Polling Twitter..."):
+                results = poll_all()
+            for platform, r in results.items():
+                if r.get("success"):
+                    st.success(f"{platform.title()}: pulled {r.get('updated', 0)} metrics")
+                else:
+                    st.warning(f"{platform.title()}: {r.get('error', 'failed')}")
+            st.rerun()
+
     days = int(period.split()[0])
 
     # Generate report

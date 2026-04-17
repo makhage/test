@@ -33,6 +33,40 @@ def _render_content_preview(post: ScheduledPostRecord) -> str:
         return post.content_json[:300]
 
 
+def _publish_post(post: ScheduledPostRecord) -> dict:
+    """Publish a post to its target platform."""
+    try:
+        data = json.loads(post.content_json)
+    except Exception:
+        return {"success": False, "error": "Invalid content JSON"}
+
+    if post.platform == "twitter":
+        from social_agent.publishers.twitter import TwitterPublisher
+        from social_agent.models.content import Tweet
+        try:
+            publisher = TwitterPublisher()
+            if post.content_type == "thread":
+                tweet = Tweet(
+                    text=data.get("text", ""),
+                    is_thread=True,
+                    thread_tweets=data.get("thread_tweets", []),
+                    hashtags=data.get("hashtags", []),
+                )
+            else:
+                tweet = Tweet(
+                    text=data.get("text", ""),
+                    hashtags=data.get("hashtags", []),
+                )
+            return publisher.publish(tweet)
+        except Exception as e:
+            return {"success": False, "error": f"Twitter publish failed: {e}"}
+
+    return {
+        "success": False,
+        "error": f"Publishing for '{post.platform}' not yet implemented — use 'Approve only' and post manually."
+    }
+
+
 def _render_carousel_images(post: ScheduledPostRecord, profile) -> None:
     """Render the carousel as actual slide images."""
     try:
@@ -89,11 +123,30 @@ def _render_post_card(post: ScheduledPostRecord, profile, actions: bool = True) 
 
         if actions:
             with col_actions:
-                if st.button("Approve", key=f"approve_{post.id}", type="primary", use_container_width=True):
+                if st.button("Approve & Publish", key=f"approve_{post.id}", type="primary", use_container_width=True):
+                    st.session_state[f"publishing_{post.id}"] = True
+                if st.button("Approve only", key=f"approve_only_{post.id}", use_container_width=True):
                     post.status = "approved"
                     return "commit"
                 if st.button("Reject", key=f"reject_{post.id}", use_container_width=True):
                     st.session_state[f"rejecting_{post.id}"] = True
+
+        # Publishing flow
+        if st.session_state.get(f"publishing_{post.id}"):
+            from datetime import datetime
+            with st.spinner("Publishing..."):
+                result = _publish_post(post)
+            if result.get("success"):
+                post.status = "published"
+                post.published_at = datetime.utcnow()
+                post.published_post_id = str(result.get("post_id", ""))
+                st.success(f"Published! {result.get('url', '')}")
+                st.session_state[f"publishing_{post.id}"] = False
+                return "commit"
+            else:
+                st.error(f"Publish failed: {result.get('error', 'unknown error')}")
+                st.info("You can still 'Approve only' and post manually.")
+                st.session_state[f"publishing_{post.id}"] = False
 
         # Rejection reason capture — teaches the agent
         if st.session_state.get(f"rejecting_{post.id}"):
