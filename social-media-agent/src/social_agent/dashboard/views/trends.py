@@ -30,34 +30,43 @@ def render() -> None:
             "Scan Now",
             type="primary",
             use_container_width=True,
-            disabled=not bool(settings.twitter_bearer_token or settings.instagram_access_token),
         )
 
+    has_social = bool(settings.twitter_bearer_token or settings.instagram_access_token)
     if scan_clicked:
-        with st.spinner("Scanning niche for viral content..."):
-            try:
-                from social_agent.research.niche_monitor import run_niche_scan
-                intel = run_niche_scan(profile, force_analysis=True)
-                if intel:
-                    st.success(f"Scan complete! Found {intel.source_post_count} viral posts, extracted {len(intel.trending_topics)} trends.")
-                else:
-                    st.warning("Scan completed but no trends extracted. Check your API keys.")
-            except Exception as e:
-                st.error(f"Scan failed: {e}")
+        if not has_social:
+            st.error(
+                "Trend scanning needs either a **Twitter bearer token** or an "
+                "**Instagram access token**. Add one in Settings to pull viral posts from the platform directly."
+            )
+        else:
+            with st.spinner("Scanning niche for viral content..."):
+                try:
+                    from social_agent.research.niche_monitor import run_niche_scan
+                    intel = run_niche_scan(profile, force_analysis=True)
+                    if intel:
+                        st.success(f"Scan complete! Found {intel.source_post_count} viral posts, extracted {len(intel.trending_topics)} trends.")
+                    else:
+                        st.warning("Scan completed but no trends extracted. Check your API keys.")
+                except Exception as e:
+                    st.error(f"Scan failed: {e}")
 
     # Analyze button (works from cached viral posts, no API needed)
-    if st.button("Re-analyze cached posts", disabled=not bool(settings.google_api_key)):
-        with st.spinner("Analyzing viral patterns with Gemini..."):
-            try:
-                from social_agent.research.analyzer import analyze_viral_content
-                intel = analyze_viral_content()
-                if intel:
-                    st.success(f"Analysis complete! {len(intel.trending_topics)} trends, {len(intel.winning_hooks)} hooks identified.")
-                    st.rerun()
-                else:
-                    st.warning("No viral posts in database to analyze. Scan first.")
-            except Exception as e:
-                st.error(f"Analysis failed: {e}")
+    if st.button("Re-analyze cached posts"):
+        if not settings.google_api_key:
+            st.error("Add your Gemini API key in Settings to run analysis.")
+        else:
+            with st.spinner("Analyzing viral patterns with Gemini..."):
+                try:
+                    from social_agent.research.analyzer import analyze_viral_content
+                    intel = analyze_viral_content()
+                    if intel:
+                        st.success(f"Analysis complete! {len(intel.trending_topics)} trends, {len(intel.winning_hooks)} hooks identified.")
+                        st.rerun()
+                    else:
+                        st.warning("No viral posts in database to analyze. Scan first.")
+                except Exception as e:
+                    st.error(f"Analysis failed: {e}")
 
     st.markdown("---")
 

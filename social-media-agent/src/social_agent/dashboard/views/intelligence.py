@@ -109,34 +109,67 @@ def render() -> None:
     # ── Tab 2: Comment Mining ──────────────────────────────────────────────────
     with tab_comments:
         st.markdown("### Comment Mining")
-        st.caption("Scrape your comment sections to find content ideas your audience is literally asking for.")
+        st.caption("Automatically pulls comments from the videos you selected in Niche Profile — across YouTube, TikTok, Instagram, and Twitter.")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            yt_urls = st.text_area("YouTube Video URLs (one per line)", height=100, key="mine_yt",
-                                    placeholder="https://youtube.com/watch?v=abc123")
-        with col2:
-            tweet_ids = st.text_area("Tweet IDs to mine replies (one per line)", height=100, key="mine_tw",
-                                      placeholder="1234567890")
+        from social_agent.research.niche_profiler import get_stored_creator_videos
+        stored_videos = get_stored_creator_videos()
+
+        plat_color = {"youtube": "#FF0000", "tiktok": "#00F2EA", "instagram": "#E4405F", "twitter": "#1DA1F2"}
+
+        if stored_videos:
+            by_plat: dict[str, int] = {}
+            for v in stored_videos:
+                p = (v.get("platform") or "video").lower()
+                by_plat[p] = by_plat.get(p, 0) + 1
+            summary = " · ".join(
+                f'<span style="color:{plat_color.get(k, "#94A3B8")};font-weight:600;">{v} {k}</span>'
+                for k, v in by_plat.items()
+            )
+            st.markdown(
+                f'<div class="card" style="padding:0.6rem;"><p style="margin:0;">'
+                f'<span style="color:#10B981;">✓</span> {len(stored_videos)} videos saved from your last Niche scan: {summary}'
+                f'</p></div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("No saved videos yet. Run **Research → Niche Profile** and pick which videos to analyze — they'll flow here automatically.")
 
         col_mine1, col_mine2 = st.columns(2)
         with col_mine1:
-            if st.button("Mine Comments", type="primary", key="mine_btn"):
-                with st.spinner("Mining comments..."):
-                    from social_agent.research.comment_miner import mine_all_comments
-                    yt_list = [u.strip() for u in yt_urls.split("\n") if u.strip()] if yt_urls else []
-                    tw_list = [t.strip() for t in tweet_ids.split("\n") if t.strip()] if tweet_ids else []
-                    comments = mine_all_comments(profile, video_urls=yt_list, tweet_ids=tw_list)
-                    st.success(f"Mined {len(comments)} comments!")
+            if st.button("Mine comments from my videos", type="primary", disabled=not stored_videos, key="mine_auto_btn", use_container_width=True):
+                with st.spinner(f"Mining comments across {len(stored_videos)} videos..."):
+                    from social_agent.research.comment_miner import mine_from_videos
+                    result = mine_from_videos(stored_videos, max_per_video=80)
+                if result["total"]:
+                    by_p = ", ".join(f"{v} from {k}" for k, v in result["by_platform"].items())
+                    st.success(f"Mined {result['total']} comments ({by_p}).")
+                else:
+                    st.warning("No comments were accessible. Most TikTok/Instagram videos gate comments — try YouTube links for best results.")
 
         with col_mine2:
-            if st.button("Analyze & Extract Ideas", disabled=not has_api, key="analyze_comments_btn"):
+            if st.button("Analyze & extract content ideas", disabled=not has_api, key="analyze_comments_btn", use_container_width=True):
                 with st.spinner("Classifying comments with Gemini..."):
                     from social_agent.research.comment_miner import analyze_comments
                     result = analyze_comments()
                     if "error" not in result:
                         st.success("Analysis complete!")
                         st.rerun()
+
+        with st.expander("Advanced: add more sources manually"):
+            col1, col2 = st.columns(2)
+            with col1:
+                yt_urls = st.text_area("YouTube Video URLs (one per line)", height=100, key="mine_yt",
+                                        placeholder="https://youtube.com/watch?v=abc123")
+            with col2:
+                tweet_ids = st.text_area("Tweet IDs to mine replies (one per line)", height=100, key="mine_tw",
+                                          placeholder="1234567890")
+            if st.button("Mine from manual sources", key="mine_manual_btn"):
+                with st.spinner("Mining comments..."):
+                    from social_agent.research.comment_miner import mine_all_comments
+                    yt_list = [u.strip() for u in yt_urls.split("\n") if u.strip()] if yt_urls else []
+                    tw_list = [t.strip() for t in tweet_ids.split("\n") if t.strip()] if tweet_ids else []
+                    comments = mine_all_comments(profile, video_urls=yt_list, tweet_ids=tw_list)
+                    st.success(f"Mined {len(comments)} comments!")
 
         # Show extracted ideas
         from social_agent.research.comment_miner import get_content_ideas_from_comments

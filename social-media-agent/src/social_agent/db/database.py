@@ -274,6 +274,17 @@ def init_db() -> None:
         except Exception:
             pass
 
+        # Add video_entries_json to niche_profiles if missing
+        try:
+            result = conn.execute(text("PRAGMA table_info(niche_profiles)"))
+            columns = [row[1] for row in result]
+            if "video_entries_json" not in columns:
+                conn.execute(text(
+                    "ALTER TABLE niche_profiles ADD COLUMN video_entries_json TEXT DEFAULT '[]'"
+                ))
+        except Exception:
+            pass
+
     # Ensure default creator exists
     session = get_session()
     try:

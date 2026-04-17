@@ -46,39 +46,49 @@ def render() -> None:
             "Scan Competitors",
             type="primary",
             use_container_width=True,
-            disabled=not bool(settings.twitter_bearer_token),
         )
 
     if scan_clicked:
-        with st.spinner("Scanning competitor accounts..."):
-            try:
-                from social_agent.research.competitors import scrape_competitors
-                posts = scrape_competitors(profile)
-                st.success(f"Scraped {len(posts)} posts from competitor accounts!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Scan failed: {e}")
+        if not settings.twitter_bearer_token:
+            st.error(
+                "Competitor scanning needs a **Twitter bearer token**. "
+                "Add `TWITTER_BEARER_TOKEN` in Settings to pull competitor posts."
+            )
+        elif not all_competitors:
+            st.warning("No competitors configured. Edit `profiles/default.yaml` → `competitors` to add some.")
+        else:
+            with st.spinner("Scanning competitor accounts..."):
+                try:
+                    from social_agent.research.competitors import scrape_competitors
+                    posts = scrape_competitors(profile)
+                    st.success(f"Scraped {len(posts)} posts from competitor accounts!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Scan failed: {e}")
 
     # Analyze button
-    if st.button("Analyze Strategies", disabled=not bool(settings.google_api_key)):
-        with st.spinner("Analyzing competitor strategies with Gemini..."):
-            try:
-                from social_agent.research.competitors import analyze_competitors
-                report = analyze_competitors(profile)
-                if report:
-                    st.success(f"Analyzed {len(report)} competitor accounts!")
-                    for comp in report:
-                        st.markdown(
-                            f'<div class="card">'
-                            f'<p style="font-weight: 600; color: #6366F1; font-size: 1.1rem;">@{comp.handle}</p>'
-                            f'<p>Avg Likes: {comp.avg_likes:.0f} | Avg Shares: {comp.avg_shares:.0f} | '
-                            f'Avg Comments: {comp.avg_comments:.0f}</p>'
-                            f'{"<p style=&quot;color: #94A3B8;&quot;>Top topics: " + ", ".join(comp.top_topics[:5]) + "</p>" if comp.top_topics else ""}'
-                            f'</div>',
-                            unsafe_allow_html=True,
-                        )
-            except Exception as e:
-                st.error(f"Analysis failed: {e}")
+    if st.button("Analyze Strategies"):
+        if not settings.google_api_key:
+            st.error("Add your Gemini API key in Settings to run analysis.")
+        else:
+            with st.spinner("Analyzing competitor strategies with Gemini..."):
+                try:
+                    from social_agent.research.competitors import analyze_competitors
+                    report = analyze_competitors(profile)
+                    if report:
+                        st.success(f"Analyzed {len(report)} competitor accounts!")
+                        for comp in report:
+                            st.markdown(
+                                f'<div class="card">'
+                                f'<p style="font-weight: 600; color: #6366F1; font-size: 1.1rem;">@{comp.handle}</p>'
+                                f'<p>Avg Likes: {comp.avg_likes:.0f} | Avg Shares: {comp.avg_shares:.0f} | '
+                                f'Avg Comments: {comp.avg_comments:.0f}</p>'
+                                f'{"<p style=&quot;color: #94A3B8;&quot;>Top topics: " + ", ".join(comp.top_topics[:5]) + "</p>" if comp.top_topics else ""}'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                except Exception as e:
+                    st.error(f"Analysis failed: {e}")
 
     st.markdown("---")
 

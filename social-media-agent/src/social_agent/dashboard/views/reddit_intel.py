@@ -63,26 +63,31 @@ def render() -> None:
             "Scan Subreddits",
             type="primary",
             use_container_width=True,
-            disabled=not has_reddit,
         )
 
-    if not has_reddit:
-        st.info("Set `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET` in `.env` to enable Reddit scanning.")
-
     if scan_clicked:
-        with st.spinner(f"Scanning {len(active_subs)} subreddits..."):
-            try:
-                from social_agent.research.reddit_scraper import scrape_all_subreddits
-                posts = scrape_all_subreddits(
-                    profile,
-                    sort=sort_by,
-                    limit_per_sub=limit_per_sub,
-                    override_subreddits=active_subs,
-                )
-                st.success(f"Scraped {len(posts)} posts from {len(active_subs)} subreddits!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Scan failed: {e}")
+        if not has_reddit:
+            st.error(
+                "Reddit credentials aren't configured yet. Add `REDDIT_CLIENT_ID` and "
+                "`REDDIT_CLIENT_SECRET` in **Settings** (or your `.env` file) — "
+                "they're free to create at https://www.reddit.com/prefs/apps."
+            )
+        elif not active_subs:
+            st.warning("No subreddits to scan. Run Niche Profile first to auto-discover them.")
+        else:
+            with st.spinner(f"Scanning {len(active_subs)} subreddits..."):
+                try:
+                    from social_agent.research.reddit_scraper import scrape_all_subreddits
+                    posts = scrape_all_subreddits(
+                        profile,
+                        sort=sort_by,
+                        limit_per_sub=limit_per_sub,
+                        override_subreddits=active_subs,
+                    )
+                    st.success(f"Scraped {len(posts)} posts from {len(active_subs)} subreddits!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Scan failed: {e}")
 
     st.markdown("---")
 

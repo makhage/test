@@ -128,19 +128,6 @@ def render() -> None:
                 key="manual_youtube",
             )
 
-    st.markdown("#### Video Transcription")
-    st.caption("The agent downloads your TikToks, Reels, and YouTube videos, then transcribes them with Whisper to understand what you actually talk about.")
-    transcribe = st.checkbox("Transcribe videos with Whisper", value=True)
-
-    max_transcripts = 5
-    if transcribe:
-        max_transcripts = st.slider(
-            "Videos to transcribe (spread across platforms)",
-            1, 15, 5,
-            help="Videos are sampled evenly across TikTok, Instagram, and YouTube.",
-        )
-
-    # Show what will be scraped
     platforms_to_scrape = []
     if twitter_handle:
         platforms_to_scrape.append("Twitter")
@@ -156,12 +143,116 @@ def render() -> None:
             f'<div class="card" style="padding: 0.6rem;">'
             f'<p style="margin: 0; color: #94A3B8;">Will scrape: '
             f'{" + ".join(f"<strong style=&quot;color: #10B981;&quot;>{p}</strong>" for p in platforms_to_scrape)}'
-            f'{"  |  Transcribing videos from all platforms" if transcribe else ""}'
             f'</p></div>',
             unsafe_allow_html=True,
         )
 
+    # --- Video picker ---
     st.markdown("---")
+    st.markdown("### Pick videos to analyze")
+    st.caption("The agent fetches your most recent videos across platforms. Check the ones you want transcribed and mined for comments.")
+
+    video_platforms_available = bool(tiktok_url or instagram_url or youtube_url)
+
+    col_fetch, col_info = st.columns([1, 3])
+    with col_fetch:
+        fetch_clicked = st.button(
+            "Load my videos",
+            use_container_width=True,
+            disabled=not video_platforms_available,
+            help="Pulls the most recent 8 videos per platform with thumbnails.",
+        )
+    with col_info:
+        if not video_platforms_available:
+            st.caption("Paste a Linktree, TikTok, Instagram, or YouTube URL above to list videos.")
+
+    if fetch_clicked:
+        with st.spinner("Fetching video previews..."):
+            from social_agent.research.niche_profiler import list_creator_videos
+            videos = list_creator_videos(
+                tiktok_url=tiktok_url or None,
+                instagram_url=instagram_url or None,
+                youtube_url=youtube_url or None,
+                per_platform=8,
+            )
+        st.session_state["available_videos"] = videos
+        if not videos:
+            st.warning("Couldn't load any video previews. The platform may be blocking scraping — you can still analyze without transcripts.")
+
+    available_videos = st.session_state.get("available_videos", [])
+    selected_videos: list[dict] = []
+
+    if available_videos:
+        # Select-all controls
+        sa_col1, sa_col2, sa_col3 = st.columns([1, 1, 3])
+        with sa_col1:
+            if st.button("Select all", use_container_width=True):
+                for i, _ in enumerate(available_videos):
+                    st.session_state[f"vid_pick_{i}"] = True
+                st.rerun()
+        with sa_col2:
+            if st.button("Clear", use_container_width=True):
+                for i, _ in enumerate(available_videos):
+                    st.session_state[f"vid_pick_{i}"] = False
+                st.rerun()
+        with sa_col3:
+            st.caption(f"Found **{len(available_videos)}** videos across your platforms.")
+
+        plat_colors = {"tiktok": "#00F2EA", "instagram": "#E4405F", "youtube": "#FF0000"}
+        grid_cols = st.columns(4)
+        for i, v in enumerate(available_videos):
+            with grid_cols[i % 4]:
+                thumb = v.get("thumbnail") or ""
+                plat = v.get("platform", "video")
+                color = plat_colors.get(plat, "#6366F1")
+                if thumb:
+                    try:
+                        st.image(thumb, use_container_width=True)
+                    except Exception:
+                        st.markdown(
+                            '<div style="height:120px;background:#1E293B;border-radius:8px;'
+                            'display:flex;align-items:center;justify-content:center;color:#64748B;">'
+                            'no preview</div>',
+                            unsafe_allow_html=True,
+                        )
+                else:
+                    st.markdown(
+                        '<div style="height:120px;background:#1E293B;border-radius:8px;'
+                        'display:flex;align-items:center;justify-content:center;color:#64748B;">'
+                        'no preview</div>',
+                        unsafe_allow_html=True,
+                    )
+                st.markdown(
+                    f'<p style="margin:0.25rem 0 0 0;font-size:0.7rem;'
+                    f'color:{color};text-transform:uppercase;font-weight:600;">{plat}</p>'
+                    f'<p style="margin:0;font-size:0.8rem;color:#CBD5E1;min-height:2.4em;line-height:1.2em;">'
+                    f'{(v.get("title") or "")[:80]}</p>',
+                    unsafe_allow_html=True,
+                )
+                checked = st.checkbox(
+                    "Include",
+                    value=st.session_state.get(f"vid_pick_{i}", i < 8),
+                    key=f"vid_pick_{i}",
+                )
+                if checked:
+                    selected_videos.append(v)
+
+        if selected_videos:
+            st.markdown(
+                f'<div class="card" style="padding:0.5rem 0.75rem;">'
+                f'<span style="color:#10B981;font-weight:600;">{len(selected_videos)}</span> '
+                f'<span style="color:#94A3B8;">videos selected — these will be transcribed and mined for comments.</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    # --- Options ---
+    st.markdown("---")
+    opt_col1, opt_col2 = st.columns(2)
+    with opt_col1:
+        transcribe = st.checkbox("Transcribe selected videos", value=True)
+    with opt_col2:
+        mine_comments = st.checkbox("Mine comments from selected videos", value=True)
 
     # --- Run Analysis ---
     can_analyze = bool(settings.google_api_key)
@@ -177,8 +268,8 @@ def render() -> None:
             steps.append("reading Linktree")
         if platforms_to_scrape:
             steps.append(f"scraping {', '.join(platforms_to_scrape)}")
-        if transcribe:
-            steps.append(f"transcribing up to {max_transcripts} videos")
+        if transcribe and selected_videos:
+            steps.append(f"transcribing {len(selected_videos)} videos")
         steps.append("analyzing with Gemini")
 
         with st.spinner(f"{'  →  '.join(steps)}..."):
@@ -193,13 +284,28 @@ def render() -> None:
                     instagram_url=instagram_url if instagram_url else None,
                     twitter_handle=twitter_handle if twitter_handle else None,
                     transcribe_videos=transcribe,
-                    max_video_transcripts=max_transcripts,
+                    max_video_transcripts=max(len(selected_videos), 1) if selected_videos else 5,
+                    selected_videos=selected_videos if selected_videos else None,
                 )
 
                 if "error" in analysis:
                     st.error(f"Analysis failed: {analysis['error']}")
                 else:
-                    st.success("Niche analysis complete! Updated creator/soul.md and added insights to the knowledge base.")
+                    # Auto-mine comments from the same selected videos
+                    if mine_comments and selected_videos:
+                        try:
+                            from social_agent.research.comment_miner import mine_from_videos
+                            with st.spinner(f"Mining comments from {len(selected_videos)} videos..."):
+                                mine_summary = mine_from_videos(selected_videos, max_per_video=80)
+                            if mine_summary["total"]:
+                                by_p = ", ".join(f"{v} from {k}" for k, v in mine_summary["by_platform"].items())
+                                st.success(f"Niche analysis complete. Mined {mine_summary['total']} comments ({by_p}). See Insights → Comment Mining.")
+                            else:
+                                st.success("Niche analysis complete! (No comments were accessible on the selected videos — most TikTok/IG videos are gated.)")
+                        except Exception as e:
+                            st.warning(f"Niche analysis complete, but comment mining failed: {e}")
+                    else:
+                        st.success("Niche analysis complete! Updated creator/soul.md and added insights to the knowledge base.")
                     st.rerun()
             except Exception as e:
                 st.error(f"Analysis failed: {e}")

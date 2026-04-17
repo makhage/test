@@ -38,6 +38,7 @@ class NicheProfileRecord(Base):
     discovered_subreddits = Column(Text, default="[]")  # JSON list
     linktree_url = Column(String(500), default="")  # Source Linktree URL
     extracted_links = Column(Text, default="{}")  # JSON of extracted platform links
+    video_entries_json = Column(Text, default="[]")  # JSON list of {platform, url, title, thumbnail}
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -534,6 +535,91 @@ def transcribe_creator_videos(video_urls: list[str], max_videos: int = 5) -> lis
 
 
 # ---------------------------------------------------------------------------
+# Video previews — gather thumbnails so the user can pick which to analyze
+# ---------------------------------------------------------------------------
+
+
+def _best_thumbnail(entry: dict) -> str:
+    """Pick a usable thumbnail URL from a yt-dlp entry."""
+    if not entry:
+        return ""
+    thumb = entry.get("thumbnail")
+    if isinstance(thumb, str) and thumb.startswith("http"):
+        return thumb
+    thumbs = entry.get("thumbnails") or []
+    if isinstance(thumbs, list) and thumbs:
+        # Prefer a medium size (not the tiny one, not the enormous one)
+        ranked = [t for t in thumbs if isinstance(t, dict) and t.get("url")]
+        if ranked:
+            ranked.sort(key=lambda t: t.get("height") or t.get("preference") or 0)
+            mid = ranked[len(ranked) // 2]
+            return mid.get("url", "")
+    return ""
+
+
+def _list_videos_ytdlp(profile_url: str, platform: str, limit: int = 12) -> list[dict]:
+    """Use yt-dlp flat extraction to list recent videos with thumbnails."""
+    try:
+        import yt_dlp
+
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": "in_playlist",
+            "playlistend": limit,
+            "ignoreerrors": True,
+            "logger": _SilentLogger(),
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(profile_url, download=False)
+
+        if not info:
+            return []
+
+        entries = info.get("entries") or []
+        videos: list[dict] = []
+        for entry in entries[:limit]:
+            if not entry:
+                continue
+            url = entry.get("url") or entry.get("webpage_url") or ""
+            title = entry.get("title") or entry.get("description") or ""
+            if not url:
+                continue
+            videos.append({
+                "platform": platform,
+                "url": url,
+                "title": (title or "")[:140],
+                "thumbnail": _best_thumbnail(entry),
+                "upload_date": entry.get("upload_date") or "",
+                "view_count": entry.get("view_count") or 0,
+                "id": entry.get("id") or url,
+            })
+        return videos
+    except Exception:
+        return []
+
+
+def list_creator_videos(
+    tiktok_url: str | None = None,
+    instagram_url: str | None = None,
+    youtube_url: str | None = None,
+    per_platform: int = 8,
+) -> list[dict]:
+    """Fetch recent videos with thumbnails from every provided platform.
+
+    Returns a flat list of {platform, url, title, thumbnail, upload_date, id}.
+    """
+    videos: list[dict] = []
+    if youtube_url:
+        videos.extend(_list_videos_ytdlp(youtube_url, "youtube", per_platform))
+    if tiktok_url:
+        videos.extend(_list_videos_ytdlp(tiktok_url, "tiktok", per_platform))
+    if instagram_url:
+        videos.extend(_list_videos_ytdlp(instagram_url, "instagram", per_platform))
+    return videos
+
+
+# ---------------------------------------------------------------------------
 # Niche Analysis — Gemini analyzes all scraped content
 # ---------------------------------------------------------------------------
 
@@ -584,6 +670,7 @@ def analyze_creator_niche(
     twitter_handle: str | None = None,
     transcribe_videos: bool = True,
     max_video_transcripts: int = 5,
+    selected_videos: list[dict] | None = None,
 ) -> dict[str, Any]:
     """Scrape the creator's content across all platforms and use Gemini to analyze their niche.
 
@@ -690,31 +777,36 @@ def analyze_creator_niche(
 
     # --- Transcribe videos from ALL platforms ---
     video_transcripts: list[dict] = []
-    if transcribe_videos and all_video_urls and settings.google_api_key:
-        # Spread transcriptions across platforms for a balanced view
-        platform_groups: dict[str, list[str]] = {}
-        for platform, url in all_video_urls:
-            if not url or not url.strip():
-                continue
-            if platform not in platform_groups:
-                platform_groups[platform] = []
-            platform_groups[platform].append(url)
 
-        # Allocate transcription slots across platforms
-        remaining = max_video_transcripts
-        urls_to_transcribe: list[tuple[str, str]] = []
-        # Round-robin across platforms
-        while remaining > 0:
-            added_any = False
-            for platform, urls in platform_groups.items():
-                if urls and remaining > 0:
-                    url = urls.pop(0)
-                    urls_to_transcribe.append((platform, url))
-                    remaining -= 1
-                    added_any = True
-            if not added_any:
-                break
+    # If the user hand-picked videos in the UI, prefer those; otherwise
+    # fall back to the auto-discovered list.
+    if selected_videos:
+        urls_to_transcribe = [
+            (v.get("platform", "video"), v["url"])
+            for v in selected_videos if v.get("url")
+        ][:max_video_transcripts]
+    else:
+        urls_to_transcribe = []
+        if all_video_urls:
+            platform_groups: dict[str, list[str]] = {}
+            for platform, url in all_video_urls:
+                if not url or not url.strip():
+                    continue
+                platform_groups.setdefault(platform, []).append(url)
 
+            remaining = max_video_transcripts
+            while remaining > 0:
+                added_any = False
+                for platform, urls in platform_groups.items():
+                    if urls and remaining > 0:
+                        url = urls.pop(0)
+                        urls_to_transcribe.append((platform, url))
+                        remaining -= 1
+                        added_any = True
+                if not added_any:
+                    break
+
+    if transcribe_videos and urls_to_transcribe and settings.google_api_key:
         for platform, url in urls_to_transcribe:
             transcript = transcribe_video(url)
             if transcript and not transcript.startswith("("):
@@ -774,12 +866,18 @@ def analyze_creator_niche(
     session = get_session()
     try:
         subreddits = [s["name"] for s in analysis.get("recommended_subreddits", [])]
+        # If the user hand-picked videos, persist them so downstream tools
+        # (comment mining, transcripts) can reuse them automatically.
+        stored_videos = selected_videos or [
+            {"platform": p, "url": u} for p, u in all_video_urls
+        ]
         record = NicheProfileRecord(
             raw_content=json.dumps(creator_content, default=str)[:10000],
             niche_analysis=json.dumps(analysis),
             discovered_subreddits=json.dumps(subreddits),
             linktree_url=linktree_url or "",
             extracted_links=json.dumps(linktree_data.get("platforms", {})) if linktree_data else "{}",
+            video_entries_json=json.dumps(stored_videos)[:20000],
         )
         session.add(record)
         session.commit()
@@ -847,3 +945,23 @@ def get_discovered_subreddits() -> list[str]:
     if not profile:
         return []
     return profile.get("_discovered_subreddits", [])
+
+
+def get_stored_creator_videos() -> list[dict]:
+    """Return the videos the user picked in the most recent niche scan."""
+    init_db()
+    session = get_session()
+    try:
+        record = (
+            session.query(NicheProfileRecord)
+            .order_by(NicheProfileRecord.created_at.desc())
+            .first()
+        )
+        if not record or not record.video_entries_json:
+            return []
+        try:
+            return json.loads(record.video_entries_json)
+        except Exception:
+            return []
+    finally:
+        session.close()

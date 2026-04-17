@@ -97,6 +97,130 @@ def mine_twitter_replies(tweet_id: str) -> list[dict]:
         return []
 
 
+class _SilentLogger:
+    def debug(self, msg): pass
+    def info(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): pass
+
+
+def mine_ytdlp_comments(video_url: str, platform: str, max_comments: int = 100) -> list[dict]:
+    """Best-effort comment extraction via yt-dlp for TikTok / Instagram / others.
+
+    yt-dlp supports comments on YouTube fully and TikTok / Instagram
+    partially. We run it with ignoreerrors so platforms that refuse
+    silently return no comments instead of exploding.
+    """
+    try:
+        import yt_dlp
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "getcomments": True,
+            "ignoreerrors": True,
+            "logger": _SilentLogger(),
+            "extractor_args": {"youtube": {"max_comments": [str(max_comments)]}},
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(video_url, download=False)
+        if not info:
+            return []
+        comments = info.get("comments") or []
+        return [
+            {
+                "platform": platform,
+                "post_url": video_url,
+                "author": c.get("author", "") or c.get("author_id", ""),
+                "text": c.get("text", ""),
+                "likes": c.get("like_count", 0) or 0,
+            }
+            for c in comments if c.get("text")
+        ]
+    except Exception:
+        return []
+
+
+def _detect_platform(url: str) -> str:
+    u = url.lower()
+    if "youtube.com" in u or "youtu.be" in u:
+        return "youtube"
+    if "tiktok.com" in u:
+        return "tiktok"
+    if "instagram.com" in u:
+        return "instagram"
+    if "twitter.com" in u or "x.com" in u:
+        return "twitter"
+    return "video"
+
+
+def mine_video_comments(video: dict | str, max_comments: int = 100) -> list[dict]:
+    """Mine comments from a single video, auto-dispatching by platform.
+
+    Accepts either a URL string or a dict with platform+url keys.
+    """
+    if isinstance(video, str):
+        url = video
+        platform = _detect_platform(url)
+    else:
+        url = video.get("url", "")
+        platform = video.get("platform") or _detect_platform(url)
+
+    if not url:
+        return []
+
+    if platform == "youtube":
+        return mine_youtube_comments(url, max_comments=max_comments)
+    if platform == "twitter":
+        # Extract tweet ID from URL
+        import re as _re
+        m = _re.search(r"/status/(\d+)", url)
+        if m:
+            return mine_twitter_replies(m.group(1))
+        return []
+    # TikTok / Instagram / unknown → best-effort via yt-dlp
+    return mine_ytdlp_comments(url, platform, max_comments=max_comments)
+
+
+def mine_from_videos(videos: list[dict], max_per_video: int = 100) -> dict[str, Any]:
+    """Iterate a list of videos, mine comments from each, and persist.
+
+    Returns a summary: {'total': int, 'by_platform': {...}, 'videos_scanned': int}.
+    """
+    init_db()
+    all_comments: list[dict] = []
+    by_platform: dict[str, int] = {}
+
+    for v in videos:
+        url = v.get("url") if isinstance(v, dict) else v
+        if not url:
+            continue
+        mined = mine_video_comments(v, max_comments=max_per_video)
+        for c in mined:
+            all_comments.append(c)
+            p = c.get("platform", "unknown")
+            by_platform[p] = by_platform.get(p, 0) + 1
+
+    session = get_session()
+    try:
+        for c in all_comments:
+            session.add(MinedCommentRecord(
+                platform=c["platform"],
+                post_url=c.get("post_url", ""),
+                comment_author=c.get("author", ""),
+                comment_text=c["text"],
+                likes=c.get("likes", 0),
+            ))
+        session.commit()
+    finally:
+        session.close()
+
+    return {
+        "total": len(all_comments),
+        "by_platform": by_platform,
+        "videos_scanned": len(videos),
+    }
+
+
 def mine_all_comments(
     profile: InfluencerProfile,
     video_urls: list[str] | None = None,
